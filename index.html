@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TV Lineup Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Personal tracker</p>
+        <h1>TV Lineup Tracker</h1>
+        <p class="subhead">A cleaner way to track shows, seasons, streaming platforms, and the next episodes that are about to drop.</p>
+      </div>
+      <div class="topbar-actions">
+        <button id="settingsBtn" class="ghost-btn">Settings</button>
+        <button id="exportBtn" class="ghost-btn">Export</button>
+        <label class="ghost-btn file-label" for="importFile">Import</label>
+        <input id="importFile" type="file" accept="application/json" hidden />
+      </div>
+    </header>
+
+    <section class="hero-grid">
+      <article class="panel add-panel">
+        <div class="panel-heading">
+          <h2>Add a show</h2>
+          <span class="pill">TVMaze + TMDb</span>
+        </div>
+        <form id="addShowForm" class="add-form">
+          <label for="showSearch" class="sr-only">Search title</label>
+          <input id="showSearch" type="text" placeholder="Type a series title…" autocomplete="off" />
+          <button type="submit" class="primary-btn">Add to lineup</button>
+        </form>
+        <p class="microcopy">Misspellings and duplicate titles get a chooser instead of a tantrum.</p>
+      </article>
+
+      <article class="panel weekly-panel">
+        <div class="panel-heading">
+          <h2>Upcoming episodes</h2>
+          <span id="upcomingCount" class="pill neutral">0 tracked</span>
+        </div>
+        <div class="upcoming-toolbar">
+          <button class="chip active" data-upcoming-filter="7">Next 7 days</button>
+          <button class="chip" data-upcoming-filter="30">Next 30 days</button>
+          <button class="chip" data-upcoming-filter="all">All known dates</button>
+        </div>
+        <div id="upcomingList" class="upcoming-list empty-state-box">
+          <p>Add a show and its next scheduled episode will show up here.</p>
+        </div>
+      </article>
+    </section>
+
+    <main class="main-grid">
+      <section class="panel lineup-panel">
+        <div class="panel-heading">
+          <h2>My lineup</h2>
+          <div class="lineup-actions">
+            <button id="refreshAllBtn" class="ghost-btn small">Refresh all</button>
+          </div>
+        </div>
+        <div id="lineupGrid" class="lineup-grid empty-state-box">
+          <p>No shows saved yet. Add one above and this starts looking a lot less like a spreadsheet.</p>
+        </div>
+      </section>
+
+      <aside class="panel detail-panel">
+        <div id="detailEmpty" class="detail-empty">
+          <h2>Show details</h2>
+          <p>Select a show from the lineup to see seasons, cast, platforms, and upcoming episode info.</p>
+        </div>
+        <div id="detailView" class="detail-view hidden"></div>
+      </aside>
+    </main>
+  </div>
+
+  <div id="chooserModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card">
+      <div class="panel-heading">
+        <h2>Pick the right show</h2>
+        <button class="icon-btn" data-close-modal aria-label="Close">×</button>
+      </div>
+      <p class="modal-copy">Multiple matches came back. Choose the one you actually meant.</p>
+      <div id="chooserList" class="chooser-list"></div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-settings></div>
+    <div class="modal-card settings-card">
+      <div class="panel-heading">
+        <h2>Settings</h2>
+        <button class="icon-btn" data-close-settings aria-label="Close">×</button>
+      </div>
+      <form id="settingsForm" class="settings-form">
+        <label>
+          TMDb API key
+          <input id="tmdbKeyInput" type="password" placeholder="Paste your TMDb key" />
+        </label>
+        <label>
+          Watch region
+          <input id="watchRegionInput" type="text" maxlength="2" placeholder="US" />
+        </label>
+        <label>
+          Top-billed actors to show
+          <input id="castCountInput" type="number" min="1" max="10" step="1" />
+        </label>
+        <div class="settings-actions">
+          <button type="submit" class="primary-btn">Save settings</button>
+        </div>
+      </form>
+      <div class="settings-note">
+        <p><strong>Where to find your TMDb key:</strong> open your existing Google Sheet, then go to <strong>Extensions → Apps Script → Project Settings → Script Properties</strong> and copy the value for <strong>TMDB_API_KEY</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <template id="lineupCardTemplate">
+    <article class="lineup-card">
+      <div class="lineup-card__image-wrap">
+        <img class="lineup-card__image" alt="" />
+      </div>
+      <div class="lineup-card__body">
+        <div class="lineup-card__title-row">
+          <h3 class="lineup-card__title"></h3>
+          <button class="icon-btn danger lineup-card__delete" title="Remove show">✕</button>
+        </div>
+        <p class="lineup-card__meta"></p>
+        <div class="lineup-card__badges"></div>
+        <p class="lineup-card__next"></p>
+        <div class="lineup-card__actions">
+          <button class="ghost-btn small lineup-card__open">Open</button>
+          <button class="ghost-btn small lineup-card__refresh">Refresh</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <template id="seasonRowTemplate">
+    <tr>
+      <td class="season-num"></td>
+      <td class="season-episodes"></td>
+      <td class="season-release"></td>
+      <td class="season-description"></td>
+      <td class="season-cast"></td>
+      <td class="season-platform"></td>
+      <td class="season-next"></td>
+      <td class="season-watched"></td>
+    </tr>
+  </template>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

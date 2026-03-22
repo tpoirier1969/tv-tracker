@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.2.0';
+const APP_VERSION = 'v4.2.1';
 const BUILD_DATE = '2026-03-22';
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
 const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings-v4-2';
@@ -23,7 +23,7 @@ const state = {
   activeUserFilter: 'all',
   upcomingFilter: '7',
   cache: {},
-  mobilePane: 'upcoming',
+  mobilePane: 'lineup',
   sync: {
     mode: 'local',
     lastSyncAt: '',
@@ -54,7 +54,7 @@ async function init() {
   if (hasSupabaseConfig()) {
     await syncCloudState({ initial: true });
   }
-  if (els.showSearch) els.showSearch.focus();
+  if (els.showSearch && window.innerWidth > 980) els.showSearch.focus();
 }
 
 function cacheElements() {
@@ -137,7 +137,7 @@ function bindEvents() {
 function hydrateStaticUi() {
   if (els.versionFlag) els.versionFlag.textContent = `${APP_VERSION} · ${BUILD_DATE}`;
   if (els.footerVersion) els.footerVersion.textContent = `${APP_VERSION} · ${BUILD_DATE}`;
-  activateMobilePane(state.mobilePane || 'upcoming', { persist: false });
+  activateMobilePane(state.mobilePane || 'lineup', { persist: false });
   document.querySelectorAll('[data-upcoming-filter]').forEach((chip) => chip.classList.toggle('active', chip.dataset.upcomingFilter === state.upcomingFilter));
 }
 
@@ -995,18 +995,19 @@ async function renderLineup() {
     title.textContent = bundle.show?.name || entry.name;
     const seasonCount = bundle.seasons.length;
     const assignedUsers = getAssignedUsers(entry);
-    meta.textContent = `${seasonCount} season${seasonCount === 1 ? '' : 's'} saved`;
+    meta.textContent = `${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${bundle.mainChannel || 'Channel unknown'}`;
 
-    if (bundle.mainChannel) badges.appendChild(makeBadge(bundle.mainChannel));
     if (bundle.streaming) badges.appendChild(makeBadge(bundle.streaming.split(',')[0], 'stream'));
-    if (bundle.nextEpisode) badges.appendChild(makeBadge('Scheduled', 'upcoming'));
-    if (assignedUsers.length) {
-      assignedUsers.forEach((user) => badges.appendChild(makeBadge(user.name, 'user-badge', user.color)));
+    if (bundle.nextEpisode) badges.appendChild(makeBadge(`S${bundle.nextEpisode.season ?? '?'}E${bundle.nextEpisode.number ?? '?'}`, 'upcoming'));
+    if (assignedUsers.length === 1) {
+      badges.appendChild(makeBadge(assignedUsers[0].name, 'user-badge', assignedUsers[0].color));
+    } else if (assignedUsers.length > 1) {
+      badges.appendChild(makeBadge(`${assignedUsers.length} users`, 'user-badge'));
     } else if (state.users.length) {
       badges.appendChild(makeBadge('Unassigned', 'unassigned'));
     }
 
-    next.textContent = bundle.nextEpisode ? `Next scheduled: ${formatNextEpisode(bundle.nextEpisode)}` : 'No known scheduled episode date right now.';
+    next.textContent = bundle.nextEpisode ? `Next: ${formatNextEpisode(bundle.nextEpisode)}` : 'Next: no date yet';
 
     card.querySelector('.lineup-card__open').addEventListener('click', () => {
       state.selectedId = entry.id;
@@ -1289,6 +1290,23 @@ async function syncCloudState({ initial = false, manual = false } = {}) {
       await pushWholeLocalState();
       markSyncSuccess();
       if (manual || initial) toast('Cloud sync is live and your local lineup has been pushed up.');
+    } else if (remoteHasData && localHasData) {
+      const merged = mergeSnapshots({
+        localUsers: state.users,
+        remoteUsers: remote.users,
+        localShows: state.shows,
+        remoteShows: remote.shows,
+      });
+      state.users = merged.users;
+      state.shows = merged.shows;
+      if (!state.users.some((user) => user.id === state.activeUserFilter)) state.activeUserFilter = 'all';
+      if (!state.shows.some((show) => show.id === state.selectedId)) state.selectedId = state.shows[0]?.id || null;
+      state.cache = {};
+      persistState();
+      await pushWholeLocalState();
+      markSyncSuccess();
+      render();
+      if (manual || initial) toast('Supabase is live. Local and cloud data were merged.');
     } else {
       state.users = remote.users.map((user, index) => normalizeUser(user, index)).sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
       state.shows = remote.shows.map((show) => normalizeShow(show)).sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
@@ -1418,6 +1436,60 @@ function serializeUserForRemote(user) {
     created_at: user.createdAt,
     updated_at: new Date().toISOString(),
   };
+}
+
+function mergeSnapshots({ localUsers = [], remoteUsers = [], localShows = [], remoteShows = [] } = {}) {
+  const userMap = new Map();
+  [...remoteUsers, ...localUsers].forEach((raw, index) => {
+    const user = normalizeUser(raw, index);
+    const existing = userMap.get(user.id);
+    if (!existing || isNewerRecord(user, existing)) {
+      userMap.set(user.id, user);
+    }
+  });
+
+  const users = [...userMap.values()]
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name))
+    .map((user, index) => ({ ...user, sortOrder: index }));
+
+  const validUserIds = new Set(users.map((user) => user.id));
+  const showMap = new Map();
+  [...remoteShows, ...localShows].forEach((raw) => {
+    const show = normalizeShow(raw);
+    show.assignedUserIds = normalizeAssignedUserIds(show.assignedUserIds).filter((id) => validUserIds.has(id));
+    const key = getShowMergeKey(show);
+    const existing = showMap.get(key);
+    if (!existing) {
+      showMap.set(key, show);
+      return;
+    }
+
+    const preferred = isNewerRecord(show, existing) ? show : existing;
+    const mergedAssigned = [...new Set([...(existing.assignedUserIds || []), ...(show.assignedUserIds || [])])].filter((id) => validUserIds.has(id));
+    const mergedWatched = { ...(existing.watched || {}), ...(show.watched || {}) };
+    showMap.set(key, {
+      ...preferred,
+      assignedUserIds: mergedAssigned,
+      watched: mergedWatched,
+    });
+  });
+
+  const shows = [...showMap.values()].sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
+  return { users, shows };
+}
+
+function getShowMergeKey(show) {
+  if (show.tmdbId) return `tmdb:${show.tmdbId}`;
+  if (show.tvmazeId) return `tvmaze:${show.tvmazeId}`;
+  const year = String(show.premiered || '').slice(0, 4);
+  return `${normalizeTitle(show.name)}|${year}`;
+}
+
+function isNewerRecord(a, b) {
+  const aTime = Date.parse(a?.updatedAt || a?.updated_at || a?.createdAt || a?.created_at || 0) || 0;
+  const bTime = Date.parse(b?.updatedAt || b?.updated_at || b?.createdAt || b?.created_at || 0) || 0;
+  if (aTime === bTime) return String(a?.addedAt || a?.added_at || '') > String(b?.addedAt || b?.added_at || '');
+  return aTime > bTime;
 }
 
 function serializeShowForRemote(show) {

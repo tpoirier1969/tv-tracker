@@ -11,23 +11,22 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <nav class="mobile-tabbar" aria-label="Sections">
-        <button class="chip active" data-mobile-pane-button="add">Add</button>
-        <button class="chip" data-mobile-pane-button="upcoming">Upcoming</button>
-        <button class="chip" data-mobile-pane-button="lineup">Lineup</button>
-        <button class="chip" data-mobile-pane-button="detail">Details</button>
-      </nav>
-      <div>
+    <header class="topbar panel">
+      <div class="topbar-main">
+        <nav class="mobile-tabbar" aria-label="Sections">
+          <button class="chip active" data-mobile-pane-button="lineup">Lineup</button>
+          <button class="chip" data-mobile-pane-button="detail">Details</button>
+        </nav>
         <div class="title-row">
           <p class="eyebrow">Shared tracker</p>
-          <span id="versionFlag" class="version-flag">v4.3.0</span>
+          <span id="versionFlag" class="version-flag">v4.4.0</span>
         </div>
         <h1>TV Lineup Tracker</h1>
-        <p class="subhead">Track shows, assign them to any users you set up, and sync the lineup across devices with Supabase. This build goes leaner: no lineup thumbnails, tighter rows, a 3-week planning view, and config-file export so you can stop typing long Supabase keys on your phone.</p>
+        <p class="subhead">Shared users, Supabase sync, tighter lineup rows, config-file export, and less wasted space.</p>
       </div>
       <div class="topbar-actions">
         <span id="syncStatusPill" class="pill neutral">Local only</span>
+        <button id="headerAddShowBtn" class="primary-btn">Add show</button>
         <button id="manageUsersBtn" class="ghost-btn">Users</button>
         <button id="syncNowBtn" class="ghost-btn">Sync now</button>
         <button id="settingsBtn" class="ghost-btn">Settings</button>
@@ -39,74 +38,66 @@
       </div>
     </header>
 
-    <section class="stats-strip" aria-label="Quick stats">
-      <article class="stat-chip"><span class="label">Visible shows</span><strong id="trackedShowsStat">0</strong></article>
-      <button type="button" id="threeWeekStatBtn" class="stat-chip stat-chip--button"><span class="label">Scheduled next 3 weeks</span><strong id="weeklyDropsStat">0</strong></button>
-      <article class="stat-chip"><span class="label">Viewing as</span><strong id="activeUserStat">All users</strong></article>
-    </section>
-
     <section class="panel user-filter-panel" aria-label="User filters">
       <div class="panel-heading compact-heading">
-        <h2>User filter</h2>
-        <p class="panel-kicker">Use this to switch the lineup between everybody or a specific person.</p>
+        <div>
+          <h2>User filter</h2>
+          <p id="userFilterLabel" class="panel-kicker">Viewing as: everybody</p>
+        </div>
       </div>
       <div id="userFilterChips" class="user-filter-chips"></div>
     </section>
 
-    <section class="hero-grid" data-mobile-pane="add">
-      <article class="panel add-panel">
-        <div class="panel-heading">
-          <h2>Add a show</h2>
-          <span class="pill">TMDb + Supabase ready</span>
-        </div>
-        <form id="addShowForm" class="add-form">
-          <label for="showSearch" class="sr-only">Search title</label>
-          <input id="showSearch" type="text" placeholder="Type a series title…" autocomplete="off" autocapitalize="words" spellcheck="false" />
-          <button type="submit" class="primary-btn">Add to lineup</button>
-        </form>
-        <p class="microcopy">If a specific user filter is active, a new show is assigned there by default. Otherwise it lands in the shared pile until you assign it.</p>
-      </article>
-
-      <article class="panel weekly-panel" data-mobile-pane="upcoming">
-        <div class="panel-heading">
-          <h2>Upcoming schedule</h2>
-          <span id="upcomingCount" class="pill neutral">0 tracked</span>
-        </div>
-        <div class="upcoming-toolbar">
-          <button class="chip active" data-upcoming-filter="21">Next 3 weeks</button>
-          <button class="chip" data-upcoming-filter="30">Next 30 days</button>
-          <button class="chip" data-upcoming-filter="all">All scheduled</button>
-        </div>
-        <div id="upcomingList" class="upcoming-list empty-state-box">
-          <p>Add a show and its next known scheduled episode lands here with the best-known network or service.</p>
-        </div>
-      </article>
-    </section>
-
     <main class="main-grid">
       <section class="panel lineup-panel" data-mobile-pane="lineup">
-        <div class="panel-heading">
+        <div class="panel-heading lineup-heading">
           <div>
-            <h2>Lineup</h2>
-            <p id="lineupScopeLabel" class="panel-kicker">Showing all saved shows.</p>
+            <h2 id="lineupTitleText">Lineup</h2>
+            <p id="lineupScopeLabel" class="panel-kicker">All users · All shows</p>
           </div>
           <div class="lineup-actions">
+            <span id="lineupCountPill" class="pill neutral">0 visible</span>
+            <button id="lineupAddBtn" class="ghost-btn small">Add show</button>
             <button id="refreshAllBtn" class="ghost-btn small">Refresh all</button>
           </div>
         </div>
+        <div id="lineupFilterChips" class="lineup-filter-row">
+          <button class="chip active" data-lineup-filter="all">All shows</button>
+          <button class="chip" data-lineup-filter="21">Scheduled next 3 weeks</button>
+        </div>
         <div id="lineupGrid" class="lineup-grid empty-state-box">
-          <p>No shows saved yet. Add one above and this stops acting like a spreadsheet.</p>
+          <p>No shows saved yet. Add one and this stops acting like a spreadsheet.</p>
         </div>
       </section>
 
       <section class="panel detail-panel" data-mobile-pane="detail">
         <div id="detailEmpty" class="empty-state-box sticky-empty">
           <h2>Show details</h2>
-          <p>Pick something from the lineup and all the season details land here.</p>
+          <p>Pick something from the lineup and the details land here.</p>
         </div>
         <div id="detailView" class="detail-view hidden"></div>
       </section>
     </main>
+  </div>
+
+  <div id="addShowModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-add-show></div>
+    <div class="modal-card settings-card">
+      <div class="panel-heading">
+        <h2>Add a show</h2>
+        <button class="icon-btn" data-close-add-show aria-label="Close">×</button>
+      </div>
+      <form id="addShowForm" class="settings-form add-show-form">
+        <label>
+          Series title
+          <input id="showSearch" type="text" placeholder="Type a series title…" autocomplete="off" autocapitalize="words" spellcheck="false" />
+        </label>
+        <div class="settings-actions add-show-actions">
+          <button type="submit" class="primary-btn">Add to lineup</button>
+        </div>
+      </form>
+      <p class="microcopy">If a specific user filter is active, a new show gets assigned there by default. Otherwise it lands in the shared pile until you assign it.</p>
+    </div>
   </div>
 
   <div id="chooserModal" class="modal hidden" aria-hidden="true">
@@ -154,7 +145,7 @@
           Shared workspace slug
           <input id="workspaceSlugInput" type="text" placeholder="cabin-tv-household" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         </label>
-        <div class="settings-actions">
+        <div class="settings-actions wrap-actions">
           <button type="submit" class="primary-btn">Save settings</button>
           <button type="button" id="settingsExportConfigBtn" class="ghost-btn small">Save config.js</button>
           <button type="button" id="settingsCopyConfigBtn" class="ghost-btn small">Copy config</button>
@@ -162,7 +153,6 @@
       </form>
       <div id="syncErrorDetail" class="sync-error-detail hidden"></div>
       <div class="settings-note">
-        <p><strong>TMDb key:</strong> keep using the key you already had.</p>
         <p><strong>Supabase:</strong> paste the project URL plus a browser-safe publishable or legacy anon key, then use the same workspace slug on every device that should share this tracker.</p>
       </div>
     </div>
@@ -247,10 +237,12 @@
     </tr>
   </template>
 
+  <div id="upcomingList" class="hidden"></div>
+  <div id="upcomingCount" class="hidden"></div>
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="config.js"></script>
   <script src="app.js" defer></script>
-  <footer class="app-footer"><span id="footerVersion">v4.3.0</span> · shared lineup dashboard</footer>
+  <footer class="app-footer"><span id="footerVersion">v4.4.0</span> · shared lineup dashboard</footer>
 </body>
 </html>

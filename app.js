@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.3.0';
+const APP_VERSION = 'v4.4.0';
 const BUILD_DATE = '2026-03-22';
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
 const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings-v4-2';
@@ -21,7 +21,7 @@ const state = {
   selectedId: null,
   assigningShowId: null,
   activeUserFilter: 'all',
-  upcomingFilter: '21',
+  upcomingFilter: 'all',
   cache: {},
   mobilePane: 'lineup',
   sync: {
@@ -54,14 +54,20 @@ async function init() {
   if (hasSupabaseConfig()) {
     await syncCloudState({ initial: true });
   }
-  if (els.showSearch && window.innerWidth > 980) els.showSearch.focus();
+  if (els.headerAddShowBtn && window.innerWidth > 980) els.headerAddShowBtn.focus();
 }
 
 function cacheElements() {
   els.addShowForm = document.getElementById('addShowForm');
   els.showSearch = document.getElementById('showSearch');
+  els.headerAddShowBtn = document.getElementById('headerAddShowBtn');
+  els.lineupAddBtn = document.getElementById('lineupAddBtn');
+  els.addShowModal = document.getElementById('addShowModal');
   els.lineupGrid = document.getElementById('lineupGrid');
   els.lineupScopeLabel = document.getElementById('lineupScopeLabel');
+  els.lineupCountPill = document.getElementById('lineupCountPill');
+  els.lineupFilterChips = document.getElementById('lineupFilterChips');
+  els.userFilterLabel = document.getElementById('userFilterLabel');
   els.detailEmpty = document.getElementById('detailEmpty');
   els.detailView = document.getElementById('detailView');
   els.upcomingList = document.getElementById('upcomingList');
@@ -100,20 +106,18 @@ function cacheElements() {
   els.copyConfigBtn = document.getElementById('copyConfigBtn');
   els.settingsExportConfigBtn = document.getElementById('settingsExportConfigBtn');
   els.settingsCopyConfigBtn = document.getElementById('settingsCopyConfigBtn');
-  els.threeWeekStatBtn = document.getElementById('threeWeekStatBtn');
   els.syncErrorDetail = document.getElementById('syncErrorDetail');
   els.toast = document.getElementById('toast');
   els.mobileTabs = [...document.querySelectorAll('[data-mobile-pane-button]')];
   els.versionFlag = document.getElementById('versionFlag');
   els.footerVersion = document.getElementById('footerVersion');
-  els.trackedShowsStat = document.getElementById('trackedShowsStat');
-  els.weeklyDropsStat = document.getElementById('weeklyDropsStat');
-    els.activeUserStat = document.getElementById('activeUserStat');
 }
 
 function bindEvents() {
   els.addShowForm.addEventListener('submit', onAddShowSubmit);
   els.refreshAllBtn.addEventListener('click', refreshAllShows);
+  els.headerAddShowBtn?.addEventListener('click', openAddShowModal);
+  els.lineupAddBtn?.addEventListener('click', openAddShowModal);
   els.settingsBtn.addEventListener('click', openSettings);
   els.settingsForm.addEventListener('submit', saveSettings);
   els.manageUsersBtn.addEventListener('click', openUsersModal);
@@ -125,20 +129,19 @@ function bindEvents() {
   els.settingsExportConfigBtn?.addEventListener('click', exportConfigFile);
   els.settingsCopyConfigBtn?.addEventListener('click', copyConfigToClipboard);
   els.importFile.addEventListener('change', importStateFile);
-  els.threeWeekStatBtn?.addEventListener('click', openThreeWeekSchedule);
   els.syncNowBtn.addEventListener('click', () => syncCloudState({ initial: false, manual: true }));
 
   document.querySelectorAll('[data-close-modal]').forEach((el) => el.addEventListener('click', closeChooser));
   document.querySelectorAll('[data-close-settings]').forEach((el) => el.addEventListener('click', closeSettings));
   document.querySelectorAll('[data-close-users]').forEach((el) => el.addEventListener('click', closeUsersModal));
   document.querySelectorAll('[data-close-assign]').forEach((el) => el.addEventListener('click', closeAssignModal));
-  document.querySelectorAll('[data-upcoming-filter]').forEach((btn) => {
+  document.querySelectorAll('[data-close-add-show]').forEach((el) => el.addEventListener('click', closeAddShowModal));
+  document.querySelectorAll('[data-lineup-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      state.upcomingFilter = btn.dataset.upcomingFilter;
-      document.querySelectorAll('[data-upcoming-filter]').forEach((chip) => chip.classList.toggle('active', chip === btn));
+      state.upcomingFilter = btn.dataset.lineupFilter;
+      document.querySelectorAll('[data-lineup-filter]').forEach((chip) => chip.classList.toggle('active', chip === btn));
       persistState();
-      renderUpcoming();
-      renderStats();
+      render();
     });
   });
   els.mobileTabs.forEach((btn) => btn.addEventListener('click', () => activateMobilePane(btn.dataset.mobilePaneButton)));
@@ -148,7 +151,7 @@ function hydrateStaticUi() {
   if (els.versionFlag) els.versionFlag.textContent = `${APP_VERSION} · ${BUILD_DATE}`;
   if (els.footerVersion) els.footerVersion.textContent = `${APP_VERSION} · ${BUILD_DATE}`;
   activateMobilePane(state.mobilePane || 'lineup', { persist: false });
-  document.querySelectorAll('[data-upcoming-filter]').forEach((chip) => chip.classList.toggle('active', chip.dataset.upcomingFilter === state.upcomingFilter));
+  document.querySelectorAll('[data-lineup-filter]').forEach((chip) => chip.classList.toggle('active', chip.dataset.lineupFilter === state.upcomingFilter));
 }
 
 function loadState() {
@@ -191,8 +194,9 @@ function normalizeState() {
   state.settings.supabaseKey = normalizeApiKey(state.settings.supabaseKey || '');
   state.settings.workspaceSlug = normalizeWorkspaceSlug(state.settings.workspaceSlug || '');
 
-  state.users = (state.users || []).map((user, index) => normalizeUser(user, index)).sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
-  state.shows = (state.shows || []).map((show) => normalizeShow(show)).sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
+  const dedupedUsers = dedupeUsers((state.users || []).map((user, index) => normalizeUser(user, index)));
+  state.users = dedupedUsers.users;
+  state.shows = (state.shows || []).map((show) => remapShowUserIds(normalizeShow(show), dedupedUsers.idMap)).sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
 
   if (state.activeUserFilter !== 'all' && !state.users.some((user) => user.id === state.activeUserFilter)) {
     state.activeUserFilter = 'all';
@@ -200,6 +204,37 @@ function normalizeState() {
   if (!state.selectedId || !state.shows.some((show) => show.id === state.selectedId)) {
     state.selectedId = state.shows[0]?.id || null;
   }
+}
+
+function dedupeUsers(users = []) {
+  const normalizedUsers = users.map((user, index) => normalizeUser(user, index));
+  const byName = new Map();
+  const idMap = new Map();
+  for (const user of normalizedUsers) {
+    const key = normalizeTitle(user.name);
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, user);
+      idMap.set(user.id, user.id);
+      continue;
+    }
+    const preferred = isNewerRecord(user, existing) ? user : existing;
+    byName.set(key, preferred);
+    idMap.set(existing.id, preferred.id);
+    idMap.set(user.id, preferred.id);
+  }
+  const usersOut = [...byName.values()]
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name))
+    .map((user, index) => ({ ...user, sortOrder: index }));
+  usersOut.forEach((user) => idMap.set(user.id, user.id));
+  const kept = new Set(usersOut.map((user) => user.id));
+  const removedIds = normalizedUsers.map((user) => user.id).filter((id) => !kept.has(id));
+  return { users: usersOut, idMap, removedIds };
+}
+
+function remapShowUserIds(show, idMap = new Map()) {
+  const assignedUserIds = normalizeAssignedUserIds(show.assignedUserIds).map((id) => idMap.get(id) || id);
+  return { ...show, assignedUserIds: [...new Set(assignedUserIds)] };
 }
 
 function normalizeUser(user, index = 0) {
@@ -284,26 +319,15 @@ function render() {
   renderUsersList();
   renderLineup();
   renderSelectedDetail();
-  renderUpcoming();
   renderStats();
   renderSyncStatus();
 }
 
 function renderStats() {
-  const today = startOfToday();
-  const visibleShows = getVisibleShows();
-  let weekly = 0;
-  for (const show of visibleShows) {
-    const bundle = getCachedBundleForShow(show);
-    const airdate = bundle?.nextEpisode?.airdate;
-    if (!airdate) continue;
-    const dt = new Date(`${airdate}T00:00:00`);
-    const delta = daysBetween(today, dt);
-    if (delta >= 0 && delta <= 21) weekly += 1;
+  if (els.lineupScopeLabel) {
+    const scopeBits = [state.activeUserFilter === 'all' ? 'All users' : getActiveUserLabel(), state.upcomingFilter === '21' ? 'Scheduled next 3 weeks' : 'All shows'];
+    els.lineupScopeLabel.textContent = scopeBits.join(' · ');
   }
-  if (els.trackedShowsStat) els.trackedShowsStat.textContent = String(visibleShows.length);
-  if (els.weeklyDropsStat) els.weeklyDropsStat.textContent = String(weekly);
-  if (els.activeUserStat) els.activeUserStat.textContent = getActiveUserLabel();
 }
 
 function renderUserFilters() {
@@ -325,10 +349,8 @@ function renderUserFilters() {
     els.userFilterChips.appendChild(button);
   });
 
-  if (els.lineupScopeLabel) {
-    els.lineupScopeLabel.textContent = state.activeUserFilter === 'all'
-      ? 'Showing all saved shows.'
-      : `Showing shows assigned to ${getActiveUserLabel()}.`;
+  if (els.userFilterLabel) {
+    els.userFilterLabel.textContent = state.activeUserFilter === 'all' ? 'Viewing as: everybody' : `Viewing as: ${getActiveUserLabel()}`;
   }
 }
 
@@ -578,9 +600,25 @@ function getActiveUserLabel() {
   return state.users.find((user) => user.id === state.activeUserFilter)?.name || 'All users';
 }
 
+function getUserScopedShows() {
+  return state.activeUserFilter === 'all'
+    ? state.shows
+    : state.shows.filter((show) => show.assignedUserIds.includes(state.activeUserFilter));
+}
+
+function showScheduledInNext21(show, bundle = null) {
+  const resolved = bundle || getCachedBundleForShow(show);
+  const airdate = resolved?.nextEpisode?.airdate;
+  if (!airdate) return false;
+  const dt = new Date(`${airdate}T00:00:00`);
+  const delta = daysBetween(startOfToday(), dt);
+  return delta >= 0 && delta <= 21;
+}
+
 function getVisibleShows() {
-  if (state.activeUserFilter === 'all') return state.shows;
-  return state.shows.filter((show) => show.assignedUserIds.includes(state.activeUserFilter));
+  const scoped = getUserScopedShows();
+  if (state.upcomingFilter !== '21') return scoped;
+  return scoped.filter((show) => showScheduledInNext21(show));
 }
 
 function getAssignedUsers(show) {
@@ -593,6 +631,17 @@ function getDefaultAssignedUsersForNewShow() {
   }
   if (state.users.length === 1) return [state.users[0].id];
   return [];
+}
+
+function openAddShowModal() {
+  els.addShowModal?.classList.remove('hidden');
+  els.addShowModal?.setAttribute('aria-hidden', 'false');
+  window.setTimeout(() => els.showSearch?.focus(), 40);
+}
+
+function closeAddShowModal() {
+  els.addShowModal?.classList.add('hidden');
+  els.addShowModal?.setAttribute('aria-hidden', 'true');
 }
 
 async function onAddShowSubmit(event) {
@@ -732,6 +781,7 @@ async function addShowToLineup(show) {
   }
 
   await hydrateShow(entry.id, { force: true });
+  closeAddShowModal();
   render();
   activateMobilePane('detail');
 }
@@ -972,48 +1022,51 @@ function formatNextEpisode(episode) {
 }
 
 async function renderLineup() {
-  const visibleShows = getVisibleShows();
+  const scopedShows = getUserScopedShows();
+  const visibleShows = [];
+  for (const show of scopedShows) {
+    const bundle = await hydrateShow(show.id).catch((err) => {
+      console.error(err);
+      return null;
+    });
+    if (state.upcomingFilter === '21' && !showScheduledInNext21(show, bundle)) continue;
+    visibleShows.push({ entry: show, bundle });
+  }
+  if (els.lineupCountPill) els.lineupCountPill.textContent = `${visibleShows.length} visible`;
+  const title = document.getElementById('lineupTitleText');
+  if (title) title.textContent = state.upcomingFilter === '21' ? `Lineup · ${visibleShows.length} scheduled next 3 weeks` : 'Lineup';
   if (!visibleShows.length) {
     els.lineupGrid.className = 'lineup-grid empty-state-box';
     els.lineupGrid.innerHTML = state.activeUserFilter === 'all'
-      ? '<p>No shows saved yet. Add one above and this stops acting like a spreadsheet.</p>'
-      : `<p>No shows are assigned to ${escapeHtml(getActiveUserLabel())} yet.</p>`;
+      ? '<p>No shows match this lineup filter yet.</p>'
+      : `<p>No shows match this filter for ${escapeHtml(getActiveUserLabel())} yet.</p>`;
     return;
   }
 
   els.lineupGrid.className = 'lineup-grid';
   els.lineupGrid.innerHTML = '';
 
-  for (const entry of visibleShows) {
-    const bundle = await hydrateShow(entry.id).catch((err) => {
-      console.error(err);
-      return null;
-    });
-    if (!bundle) continue;
+  for (const { entry, bundle } of visibleShows) {
     const card = document.getElementById('lineupCardTemplate').content.firstElementChild.cloneNode(true);
     const title = card.querySelector('.lineup-card__title');
     const meta = card.querySelector('.lineup-card__meta');
     const badges = card.querySelector('.lineup-card__badges');
     const next = card.querySelector('.lineup-card__next');
 
-    title.textContent = bundle.show?.name || entry.name;
-    const seasonCount = bundle.seasons.length;
+    const seasonCount = (bundle?.seasons?.length ?? Number(entry.seasonCount || 0) ?? 0);
     const assignedUsers = getAssignedUsers(entry);
-    const carrier = bundle.mainChannel || 'carrier unknown';
-    const streamer = bundle.streaming?.split(',')[0] || '';
-    meta.textContent = `${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${carrier}`;
+    const carrier = bundle?.mainChannel || entry.network || 'carrier unknown';
+    const streamer = (bundle?.streaming || entry.streaming || '').split(',')[0].trim();
 
-    if (streamer && (!bundle.mainChannel || normalizeTitle(streamer) !== normalizeTitle(bundle.mainChannel))) {
-      badges.appendChild(makeBadge(streamer, 'stream'));
-    }
-    if (assignedUsers.length) {
-      assignedUsers.forEach((user) => badges.appendChild(makeBadge(user.name, 'user-badge', user.color)));
-    } else if (state.users.length) {
-      badges.appendChild(makeBadge('Unassigned', 'unassigned'));
-    }
-    if (bundle.nextEpisode) badges.appendChild(makeBadge('Scheduled', 'upcoming'));
+    title.textContent = bundle?.show?.name || entry.name;
+    meta.textContent = `${seasonCount || '—'} season${seasonCount === 1 ? '' : 's'} · ${carrier}`;
 
-    next.textContent = bundle.nextEpisode ? `Next scheduled: ${formatNextEpisode(bundle.nextEpisode)}` : 'No known scheduled episode date right now.';
+    if (streamer && (!carrier || normalizeTitle(streamer) !== normalizeTitle(carrier))) badges.appendChild(makeBadge(streamer, 'stream'));
+    if (assignedUsers.length) assignedUsers.forEach((user) => badges.appendChild(makeBadge(user.name, 'user-badge', user.color)));
+    else if (state.users.length) badges.appendChild(makeBadge('Unassigned', 'unassigned'));
+    if (bundle?.nextEpisode) badges.appendChild(makeBadge('Scheduled', 'upcoming'));
+
+    next.textContent = bundle?.nextEpisode ? `Next scheduled: ${formatNextEpisode(bundle.nextEpisode)}` : (bundle ? 'No known scheduled episode date right now.' : 'Details unavailable right now. Try Refresh.');
 
     card.querySelector('.lineup-card__open').addEventListener('click', () => {
       state.selectedId = entry.id;
@@ -1025,7 +1078,7 @@ async function renderLineup() {
     card.querySelector('.lineup-card__refresh').addEventListener('click', async () => {
       await hydrateShow(entry.id, { force: true });
       render();
-      toast(`Refreshed ${bundle.show?.name || entry.name}.`);
+      toast(`Refreshed ${bundle?.show?.name || entry.name}.`);
     });
     card.querySelector('.lineup-card__delete').addEventListener('click', () => removeShow(entry.id));
 
@@ -1180,119 +1233,15 @@ async function renderSelectedDetail() {
   });
 }
 
-async function renderUpcoming() {
-  const items = [];
-  for (const show of getVisibleShows()) {
-    const bundle = await hydrateShow(show.id).catch(() => null);
-    if (!bundle?.nextEpisode?.airdate) continue;
-    items.push({
-      name: bundle.show?.name || show.name,
-      date: bundle.nextEpisode.airdate,
-      season: bundle.nextEpisode.season,
-      episode: bundle.nextEpisode.number,
-      platform: bundle.streaming?.split(',')[0] || bundle.mainChannel || 'Unknown',
-      id: show.id,
-    });
-  }
-
-  items.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
-  const now = startOfToday();
-  const filter = state.upcomingFilter;
-  const filtered = items.filter((item) => {
-    if (filter === 'all') return true;
-    const days = daysBetween(now, new Date(`${item.date}T00:00:00`));
-    return days >= 0 && days <= Number(filter);
-  });
-
-  els.upcomingCount.textContent = `${items.length} tracked`;
-
-  if (!filtered.length) {
-    els.upcomingList.className = 'upcoming-list empty-state-box';
-    els.upcomingList.innerHTML = '<p>No scheduled episodes match this filter right now.</p>';
-    return;
-  }
-
-  els.upcomingList.className = 'upcoming-list';
-  els.upcomingList.innerHTML = '';
-  filtered.forEach((item) => {
-    const card = document.createElement('article');
-    card.className = 'upcoming-item';
-    const dateObj = new Date(`${item.date}T00:00:00`);
-    const month = dateObj.toLocaleDateString(undefined, { month: 'short' });
-    const day = dateObj.toLocaleDateString(undefined, { day: 'numeric' });
-    const weekday = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
-    const delta = daysBetween(startOfToday(), dateObj);
-    card.innerHTML = `
-      <div class="upcoming-date"><div><span>${escapeHtml(month)}</span><strong>${escapeHtml(day)}</strong><span>${escapeHtml(weekday)}</span></div></div>
-      <div class="upcoming-meta"><h3>${escapeHtml(item.name)}</h3><p>S${escapeHtml(String(item.season))}E${escapeHtml(String(item.episode))} · ${delta === 0 ? 'Scheduled today' : delta === 1 ? 'Scheduled tomorrow' : `Scheduled in ${delta} days`}</p></div>
-      <div class="upcoming-service">${escapeHtml(item.platform)}</div>
-    `;
-    card.addEventListener('click', () => {
-      state.selectedId = item.id;
-      persistState();
-      renderSelectedDetail();
-      activateMobilePane('detail');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    els.upcomingList.appendChild(card);
-  });
-}
-
-
-function loadConfigDefaults() {
-  const cfg = (window.TV_TRACKER_CONFIG && typeof window.TV_TRACKER_CONFIG === 'object') ? window.TV_TRACKER_CONFIG : {};
-  if (!cfg || Array.isArray(cfg)) return;
-  state.settings = {
-    ...state.settings,
-    ...Object.fromEntries(Object.entries(cfg).filter(([, value]) => value != null && value !== '')),
-  };
-}
-
-function buildConfigObject() {
-  return {
-    tmdbApiKey: String(state.settings.tmdbApiKey || ''),
-    watchRegion: String(state.settings.watchRegion || 'US'),
-    castCount: Number(state.settings.castCount || 4),
-    supabaseUrl: String(state.settings.supabaseUrl || ''),
-    supabaseKey: String(state.settings.supabaseKey || ''),
-    workspaceSlug: String(state.settings.workspaceSlug || ''),
-  };
-}
-
-function buildConfigJsText() {
-  return `window.TV_TRACKER_CONFIG = ${JSON.stringify(buildConfigObject(), null, 2)};
-`;
-}
-
-function exportConfigFile() {
-  const blob = new Blob([buildConfigJsText()], { type: 'application/javascript' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'config.js';
-  link.click();
-  URL.revokeObjectURL(url);
-  toast('config.js saved. Drop it into the app folder and you can stop typing those keys on your phone.');
-}
-
-async function copyConfigToClipboard() {
-  const text = buildConfigJsText();
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('Config copied to the clipboard.');
-  } catch (err) {
-    console.error(err);
-    toast('Clipboard copy failed. Use Save config instead.');
-  }
-}
+function renderUpcoming() {}
 
 function openThreeWeekSchedule() {
   state.upcomingFilter = '21';
-  document.querySelectorAll('[data-upcoming-filter]').forEach((chip) => chip.classList.toggle('active', chip.dataset.upcomingFilter === '21'));
+  document.querySelectorAll('[data-lineup-filter]').forEach((chip) => chip.classList.toggle('active', chip.dataset.lineupFilter === '21'));
   persistState();
-  renderUpcoming();
-  activateMobilePane('upcoming');
-  const target = els.upcomingList?.closest('.weekly-panel') || els.upcomingList;
+  render();
+  activateMobilePane('lineup');
+  const target = els.lineupGrid?.closest('.lineup-panel') || els.lineupGrid;
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -1368,12 +1317,15 @@ async function syncCloudState({ initial = false, manual = false } = {}) {
       state.cache = {};
       persistState();
       await pushWholeLocalState();
+      if (merged.removedUserIds?.length) await deleteRemoteUsers(merged.removedUserIds);
       markSyncSuccess();
       render();
       if (manual || initial) toast('Supabase is live. Local and cloud data were merged.');
     } else {
-      state.users = remote.users.map((user, index) => normalizeUser(user, index)).sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
-      state.shows = remote.shows.map((show) => normalizeShow(show)).sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
+      const dedupedRemoteUsers = dedupeUsers(remote.users.map((user, index) => normalizeUser(user, index)));
+      state.users = dedupedRemoteUsers.users;
+      state.shows = remote.shows.map((show) => remapShowUserIds(normalizeShow(show), dedupedRemoteUsers.idMap)).sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
+      if (dedupedRemoteUsers.removedIds?.length) await deleteRemoteUsers(dedupedRemoteUsers.removedIds);
       if (!state.users.some((user) => user.id === state.activeUserFilter)) state.activeUserFilter = 'all';
       if (!state.shows.some((show) => show.id === state.selectedId)) state.selectedId = state.shows[0]?.id || null;
       state.cache = {};
@@ -1492,6 +1444,12 @@ async function deleteRemoteUser(userId) {
   return supabaseRest(`/tvt_users?id=eq.${encodeFilterValue(userId)}`, { method: 'DELETE', prefer: 'return=representation' });
 }
 
+async function deleteRemoteUsers(userIds = []) {
+  for (const userId of [...new Set(userIds)].filter(Boolean)) {
+    await deleteRemoteUser(userId);
+  }
+}
+
 async function deleteRemoteShow(showId) {
   return supabaseRest(`/tvt_shows?id=eq.${encodeFilterValue(showId)}`, { method: 'DELETE', prefer: 'return=representation' });
 }
@@ -1509,23 +1467,13 @@ function serializeUserForRemote(user) {
 }
 
 function mergeSnapshots({ localUsers = [], remoteUsers = [], localShows = [], remoteShows = [] } = {}) {
-  const userMap = new Map();
-  [...remoteUsers, ...localUsers].forEach((raw, index) => {
-    const user = normalizeUser(raw, index);
-    const existing = userMap.get(user.id);
-    if (!existing || isNewerRecord(user, existing)) {
-      userMap.set(user.id, user);
-    }
-  });
-
-  const users = [...userMap.values()]
-    .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name))
-    .map((user, index) => ({ ...user, sortOrder: index }));
-
+  const dedupedUsers = dedupeUsers([...remoteUsers, ...localUsers].map((raw, index) => normalizeUser(raw, index)));
+  const users = dedupedUsers.users;
   const validUserIds = new Set(users.map((user) => user.id));
   const showMap = new Map();
+
   [...remoteShows, ...localShows].forEach((raw) => {
-    const show = normalizeShow(raw);
+    const show = remapShowUserIds(normalizeShow(raw), dedupedUsers.idMap);
     show.assignedUserIds = normalizeAssignedUserIds(show.assignedUserIds).filter((id) => validUserIds.has(id));
     const key = getShowMergeKey(show);
     const existing = showMap.get(key);
@@ -1537,15 +1485,11 @@ function mergeSnapshots({ localUsers = [], remoteUsers = [], localShows = [], re
     const preferred = isNewerRecord(show, existing) ? show : existing;
     const mergedAssigned = [...new Set([...(existing.assignedUserIds || []), ...(show.assignedUserIds || [])])].filter((id) => validUserIds.has(id));
     const mergedWatched = { ...(existing.watched || {}), ...(show.watched || {}) };
-    showMap.set(key, {
-      ...preferred,
-      assignedUserIds: mergedAssigned,
-      watched: mergedWatched,
-    });
+    showMap.set(key, { ...preferred, assignedUserIds: mergedAssigned, watched: mergedWatched });
   });
 
   const shows = [...showMap.values()].sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
-  return { users, shows };
+  return { users, shows, removedUserIds: dedupedUsers.removedIds };
 }
 
 function getShowMergeKey(show) {

@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.4.0';
+const APP_VERSION = 'v4.5.0';
 const BUILD_DATE = '2026-03-22';
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
 const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings-v4-2';
@@ -34,6 +34,7 @@ const state = {
 const els = {};
 let toastTimer = null;
 let syncInFlight = false;
+let activeModal = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   init().catch((err) => {
@@ -145,6 +146,41 @@ function bindEvents() {
     });
   });
   els.mobileTabs.forEach((btn) => btn.addEventListener('click', () => activateMobilePane(btn.dataset.mobilePaneButton)));
+
+  document.addEventListener('keydown', onGlobalKeydown);
+  document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
+    backdrop.addEventListener('click', (event) => {
+      event.preventDefault();
+      closeTopModal();
+    });
+  });
+}
+
+function onGlobalKeydown(event) {
+  if (event.key !== 'Escape') return;
+  closeTopModal();
+}
+
+function closeTopModal() {
+  switch (activeModal) {
+    case 'add-show':
+      closeAddShowModal();
+      break;
+    case 'chooser':
+      closeChooser();
+      break;
+    case 'settings':
+      closeSettings();
+      break;
+    case 'users':
+      closeUsersModal();
+      break;
+    case 'assign':
+      closeAssignModal();
+      break;
+    default:
+      break;
+  }
 }
 
 function hydrateStaticUi() {
@@ -458,11 +494,15 @@ async function removeUser(userId) {
 
 function openUsersModal() {
   renderUsersList();
+  activeModal = 'users';
   els.usersModal.classList.remove('hidden');
+  els.usersModal.setAttribute('aria-hidden', 'false');
 }
 
 function closeUsersModal() {
+  if (activeModal === 'users') activeModal = null;
   els.usersModal.classList.add('hidden');
+  els.usersModal.setAttribute('aria-hidden', 'true');
 }
 
 function openAssignModal(showId) {
@@ -471,12 +511,16 @@ function openAssignModal(showId) {
   if (!show) return;
   els.assignModalTitle.textContent = `Choose who should see “${show.name}” in their filtered lineup.`;
   renderAssignChecklist(show);
+  activeModal = 'assign';
   els.assignModal.classList.remove('hidden');
+  els.assignModal.setAttribute('aria-hidden', 'false');
 }
 
 function closeAssignModal() {
   state.assigningShowId = null;
+  if (activeModal === 'assign') activeModal = null;
   els.assignModal.classList.add('hidden');
+  els.assignModal.setAttribute('aria-hidden', 'true');
 }
 
 function renderAssignChecklist(show) {
@@ -541,11 +585,15 @@ function openChooser(candidates) {
     });
     els.chooserList.appendChild(button);
   });
+  activeModal = 'chooser';
   els.chooserModal.classList.remove('hidden');
+  els.chooserModal.setAttribute('aria-hidden', 'false');
 }
 
 function closeChooser() {
+  if (activeModal === 'chooser') activeModal = null;
   els.chooserModal.classList.add('hidden');
+  els.chooserModal.setAttribute('aria-hidden', 'true');
 }
 
 function openSettings() {
@@ -555,11 +603,15 @@ function openSettings() {
   els.supabaseUrlInput.value = state.settings.supabaseUrl || '';
   els.supabaseKeyInput.value = state.settings.supabaseKey || '';
   els.workspaceSlugInput.value = state.settings.workspaceSlug || '';
+  activeModal = 'settings';
   els.settingsModal.classList.remove('hidden');
+  els.settingsModal.setAttribute('aria-hidden', 'false');
 }
 
 function closeSettings() {
+  if (activeModal === 'settings') activeModal = null;
   els.settingsModal.classList.add('hidden');
+  els.settingsModal.setAttribute('aria-hidden', 'true');
 }
 
 async function saveSettings(event) {
@@ -634,12 +686,16 @@ function getDefaultAssignedUsersForNewShow() {
 }
 
 function openAddShowModal() {
+  activeModal = 'add-show';
   els.addShowModal?.classList.remove('hidden');
   els.addShowModal?.setAttribute('aria-hidden', 'false');
   window.setTimeout(() => els.showSearch?.focus(), 40);
 }
 
-function closeAddShowModal() {
+function closeAddShowModal({ clear = false } = {}) {
+  setFormBusy(false);
+  if (clear && els.showSearch) els.showSearch.value = '';
+  if (activeModal === 'add-show') activeModal = null;
   els.addShowModal?.classList.add('hidden');
   els.addShowModal?.setAttribute('aria-hidden', 'true');
 }
@@ -659,9 +715,12 @@ async function onAddShowSubmit(event) {
     const choice = chooseSearchResult(query, matches);
     if (choice.type === 'auto') {
       await addShowToLineup(choice.show);
-    } else {
-      openChooser(choice.candidates);
+      closeAddShowModal({ clear: true });
+      return;
     }
+
+    closeAddShowModal();
+    openChooser(choice.candidates);
   } catch (err) {
     console.error(err);
     toast('Search failed. TMDb key missing or network blocked. Open Settings and paste your TMDb key.');
@@ -671,9 +730,12 @@ async function onAddShowSubmit(event) {
 }
 
 function setFormBusy(isBusy) {
-  const button = els.addShowForm.querySelector('button');
-  button.disabled = isBusy;
-  button.textContent = isBusy ? 'Searching…' : 'Add to lineup';
+  const button = els.addShowForm?.querySelector('button');
+  if (button) {
+    button.disabled = isBusy;
+    button.textContent = isBusy ? 'Searching…' : 'Add to lineup';
+  }
+  if (els.showSearch) els.showSearch.disabled = isBusy;
 }
 
 async function searchShows(query) {
@@ -1286,7 +1348,10 @@ async function syncCloudState({ initial = false, manual = false } = {}) {
     if (manual) toast('Add your Supabase details in Settings first.');
     return;
   }
-  if (syncInFlight) return;
+  if (syncInFlight) {
+    if (manual) toast('Sync already running. Give it a second, not a funeral.');
+    return;
+  }
 
   syncInFlight = true;
   state.sync.mode = 'syncing';

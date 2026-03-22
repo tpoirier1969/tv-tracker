@@ -19,10 +19,10 @@
         </nav>
         <div class="title-row">
           <p class="eyebrow">Shared tracker</p>
-          <span id="versionFlag" class="version-flag">v4.4.0</span>
+          <span id="versionFlag" class="version-flag">v4.5.0</span>
         </div>
         <h1>TV Lineup Tracker</h1>
-        <p class="subhead">Shared users, Supabase sync, tighter lineup rows, config-file export, and less wasted space.</p>
+        <p class="subhead">Cleaner lineup workflow, safer Supabase sync, and windows that don’t trap you.</p>
       </div>
       <div class="topbar-actions">
         <span id="syncStatusPill" class="pill neutral">Local only</span>
@@ -57,8 +57,8 @@
           </div>
           <div class="lineup-actions">
             <span id="lineupCountPill" class="pill neutral">0 visible</span>
-            <button id="lineupAddBtn" class="ghost-btn small">Add show</button>
             <button id="refreshAllBtn" class="ghost-btn small">Refresh all</button>
+            <button id="lineupAddBtn" class="primary-btn small">Add show</button>
           </div>
         </div>
         <div id="lineupFilterChips" class="lineup-filter-row">
@@ -93,6 +93,7 @@
           <input id="showSearch" type="text" placeholder="Type a series title…" autocomplete="off" autocapitalize="words" spellcheck="false" />
         </label>
         <div class="settings-actions add-show-actions">
+          <button type="button" class="ghost-btn" data-close-add-show>Cancel</button>
           <button type="submit" class="primary-btn">Add to lineup</button>
         </div>
       </form>
@@ -243,6 +244,6 @@
 
   <script src="config.js"></script>
   <script src="app.js" defer></script>
-  <footer class="app-footer"><span id="footerVersion">v4.4.0</span> · shared lineup dashboard</footer>
+  <footer class="app-footer"><span id="footerVersion">v4.5.0</span> · shared lineup dashboard</footer>
 </body>
 </html>

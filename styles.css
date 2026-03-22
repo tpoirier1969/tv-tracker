@@ -116,6 +116,10 @@ img{display:block;max-width:100%}
 .modal{position:fixed;inset:0;z-index:30}
 .modal-backdrop{position:absolute;inset:0;background:rgba(2,6,17,.72);backdrop-filter:blur(6px)}
 .modal-card{position:relative;z-index:1;width:min(680px, calc(100% - 40px));margin:44px auto;padding:20px;background:linear-gradient(180deg, rgba(18,26,50,.98), rgba(18,28,54,.98));border:1px solid rgba(255,255,255,.12);border-radius:22px;box-shadow:var(--shadow)}
+.modal[aria-hidden="true"]{display:none!important}
+.modal[aria-hidden="false"]{display:block}
+.modal-card{max-height:min(calc(100vh - 88px), 860px);overflow:auto}
+
 .modal-copy,.microcopy{color:var(--muted);margin:0 0 12px}
 .settings-form{display:grid;gap:14px}
 .settings-form label{display:grid;gap:8px;font-size:14px}

@@ -132,12 +132,7 @@ function bindEvents() {
   els.importFile.addEventListener('change', importStateFile);
   els.syncNowBtn.addEventListener('click', () => syncCloudState({ initial: false, manual: true }));
 
-  document.querySelectorAll('[data-close-modal]').forEach((el) => el.addEventListener('click', closeChooser));
-  document.querySelectorAll('[data-close-settings]').forEach((el) => el.addEventListener('click', closeSettings));
-  document.querySelectorAll('[data-close-users]').forEach((el) => el.addEventListener('click', closeUsersModal));
-  document.querySelectorAll('[data-close-assign]').forEach((el) => el.addEventListener('click', closeAssignModal));
-  document.querySelectorAll('[data-close-add-show]').forEach((el) => el.addEventListener('click', closeAddShowModal));
-  document.querySelectorAll('[data-lineup-filter]').forEach((btn) => {
+    document.querySelectorAll('[data-lineup-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.upcomingFilter = btn.dataset.lineupFilter;
       document.querySelectorAll('[data-lineup-filter]').forEach((chip) => chip.classList.toggle('active', chip === btn));
@@ -148,6 +143,7 @@ function bindEvents() {
   els.mobileTabs.forEach((btn) => btn.addEventListener('click', () => activateMobilePane(btn.dataset.mobilePaneButton)));
 
   document.addEventListener('keydown', onGlobalKeydown);
+  document.addEventListener('click', onDocumentClick);
   document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
     backdrop.addEventListener('click', (event) => {
       event.preventDefault();
@@ -156,8 +152,29 @@ function bindEvents() {
   });
 }
 
+
+function onDocumentClick(event) {
+  const closeTrigger = event.target.closest('[data-close-modal], [data-close-settings], [data-close-users], [data-close-assign], [data-close-add-show]');
+  if (closeTrigger) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (closeTrigger.hasAttribute('data-close-add-show')) return closeAddShowModal();
+    if (closeTrigger.hasAttribute('data-close-settings')) return closeSettings();
+    if (closeTrigger.hasAttribute('data-close-users')) return closeUsersModal();
+    if (closeTrigger.hasAttribute('data-close-assign')) return closeAssignModal();
+    if (closeTrigger.hasAttribute('data-close-modal')) return closeChooser();
+  }
+}
+
+function setModalVisibility(modalEl, isOpen) {
+  if (!modalEl) return;
+  modalEl.classList.toggle('hidden', !isOpen);
+  modalEl.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+}
+
 function onGlobalKeydown(event) {
   if (event.key !== 'Escape') return;
+  event.preventDefault();
   closeTopModal();
 }
 
@@ -495,14 +512,12 @@ async function removeUser(userId) {
 function openUsersModal() {
   renderUsersList();
   activeModal = 'users';
-  els.usersModal.classList.remove('hidden');
-  els.usersModal.setAttribute('aria-hidden', 'false');
+  setModalVisibility(els.usersModal, true);
 }
 
 function closeUsersModal() {
   if (activeModal === 'users') activeModal = null;
-  els.usersModal.classList.add('hidden');
-  els.usersModal.setAttribute('aria-hidden', 'true');
+  setModalVisibility(els.usersModal, false);
 }
 
 function openAssignModal(showId) {
@@ -512,15 +527,13 @@ function openAssignModal(showId) {
   els.assignModalTitle.textContent = `Choose who should see “${show.name}” in their filtered lineup.`;
   renderAssignChecklist(show);
   activeModal = 'assign';
-  els.assignModal.classList.remove('hidden');
-  els.assignModal.setAttribute('aria-hidden', 'false');
+  setModalVisibility(els.assignModal, true);
 }
 
 function closeAssignModal() {
   state.assigningShowId = null;
   if (activeModal === 'assign') activeModal = null;
-  els.assignModal.classList.add('hidden');
-  els.assignModal.setAttribute('aria-hidden', 'true');
+  setModalVisibility(els.assignModal, false);
 }
 
 function renderAssignChecklist(show) {
@@ -586,14 +599,12 @@ function openChooser(candidates) {
     els.chooserList.appendChild(button);
   });
   activeModal = 'chooser';
-  els.chooserModal.classList.remove('hidden');
-  els.chooserModal.setAttribute('aria-hidden', 'false');
+  setModalVisibility(els.chooserModal, true);
 }
 
 function closeChooser() {
   if (activeModal === 'chooser') activeModal = null;
-  els.chooserModal.classList.add('hidden');
-  els.chooserModal.setAttribute('aria-hidden', 'true');
+  setModalVisibility(els.chooserModal, false);
 }
 
 function openSettings() {
@@ -604,14 +615,12 @@ function openSettings() {
   els.supabaseKeyInput.value = state.settings.supabaseKey || '';
   els.workspaceSlugInput.value = state.settings.workspaceSlug || '';
   activeModal = 'settings';
-  els.settingsModal.classList.remove('hidden');
-  els.settingsModal.setAttribute('aria-hidden', 'false');
+  setModalVisibility(els.settingsModal, true);
 }
 
 function closeSettings() {
   if (activeModal === 'settings') activeModal = null;
-  els.settingsModal.classList.add('hidden');
-  els.settingsModal.setAttribute('aria-hidden', 'true');
+  setModalVisibility(els.settingsModal, false);
 }
 
 async function saveSettings(event) {
@@ -687,8 +696,7 @@ function getDefaultAssignedUsersForNewShow() {
 
 function openAddShowModal() {
   activeModal = 'add-show';
-  els.addShowModal?.classList.remove('hidden');
-  els.addShowModal?.setAttribute('aria-hidden', 'false');
+  setModalVisibility(els.addShowModal, true);
   window.setTimeout(() => els.showSearch?.focus(), 40);
 }
 
@@ -696,8 +704,7 @@ function closeAddShowModal({ clear = false } = {}) {
   setFormBusy(false);
   if (clear && els.showSearch) els.showSearch.value = '';
   if (activeModal === 'add-show') activeModal = null;
-  els.addShowModal?.classList.add('hidden');
-  els.addShowModal?.setAttribute('aria-hidden', 'true');
+  setModalVisibility(els.addShowModal, false);
 }
 
 async function onAddShowSubmit(event) {

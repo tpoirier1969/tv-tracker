@@ -85,7 +85,7 @@
     <div class="modal-card settings-card">
       <div class="panel-heading">
         <h2>Add a show</h2>
-        <button class="icon-btn" data-close-add-show aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-add-show aria-label="Close">×</button>
       </div>
       <form id="addShowForm" class="settings-form add-show-form">
         <label>
@@ -106,7 +106,7 @@
     <div class="modal-card">
       <div class="panel-heading">
         <h2>Pick the right show</h2>
-        <button class="icon-btn" data-close-modal aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-modal aria-label="Close">×</button>
       </div>
       <p class="modal-copy">Multiple matches came back. Choose the one you actually meant.</p>
       <div id="chooserList" class="chooser-list"></div>
@@ -118,7 +118,7 @@
     <div class="modal-card settings-card">
       <div class="panel-heading">
         <h2>Settings</h2>
-        <button class="icon-btn" data-close-settings aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-settings aria-label="Close">×</button>
       </div>
       <form id="settingsForm" class="settings-form">
         <label>
@@ -147,6 +147,7 @@
           <input id="workspaceSlugInput" type="text" placeholder="cabin-tv-household" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         </label>
         <div class="settings-actions wrap-actions">
+          <button type="button" class="ghost-btn" data-close-settings>Close</button>
           <button type="submit" class="primary-btn">Save settings</button>
           <button type="button" id="settingsExportConfigBtn" class="ghost-btn small">Save config.js</button>
           <button type="button" id="settingsCopyConfigBtn" class="ghost-btn small">Copy config</button>
@@ -164,7 +165,7 @@
     <div class="modal-card settings-card">
       <div class="panel-heading">
         <h2>Users</h2>
-        <button class="icon-btn" data-close-users aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-users aria-label="Close">×</button>
       </div>
       <form id="userForm" class="settings-form inline-form">
         <label>
@@ -172,6 +173,7 @@
           <input id="userNameInput" type="text" placeholder="Name" autocomplete="off" />
         </label>
         <div class="settings-actions">
+          <button type="button" class="ghost-btn" data-close-users>Close</button>
           <button type="submit" class="primary-btn">Add user</button>
         </div>
       </form>
@@ -186,7 +188,7 @@
     <div class="modal-card settings-card">
       <div class="panel-heading">
         <h2>Assign users</h2>
-        <button class="icon-btn" data-close-assign aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-assign aria-label="Close">×</button>
       </div>
       <p id="assignModalTitle" class="modal-copy">Choose who this show belongs to.</p>
       <form id="assignForm" class="settings-form">
@@ -194,6 +196,7 @@
           <p>Add at least one user first.</p>
         </div>
         <div class="settings-actions">
+          <button type="button" class="ghost-btn" data-close-assign>Close</button>
           <button type="submit" class="primary-btn">Save assignment</button>
         </div>
       </form>

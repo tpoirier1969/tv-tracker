@@ -12,6 +12,12 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
+      <nav class="mobile-tabbar" aria-label="Sections">
+        <button class="chip active" data-mobile-pane-button="add">Add</button>
+        <button class="chip" data-mobile-pane-button="upcoming">Upcoming</button>
+        <button class="chip" data-mobile-pane-button="lineup">Lineup</button>
+        <button class="chip" data-mobile-pane-button="detail">Details</button>
+      </nav>
       <div>
         <p class="eyebrow">Personal tracker</p>
         <h1>TV Lineup Tracker</h1>
@@ -25,7 +31,7 @@
       </div>
     </header>
 
-    <section class="hero-grid">
+    <section class="hero-grid" data-mobile-pane="add">
       <article class="panel add-panel">
         <div class="panel-heading">
           <h2>Add a show</h2>
@@ -33,13 +39,13 @@
         </div>
         <form id="addShowForm" class="add-form">
           <label for="showSearch" class="sr-only">Search title</label>
-          <input id="showSearch" type="text" placeholder="Type a series title…" autocomplete="off" />
+          <input id="showSearch" type="text" placeholder="Type a series title…" autocomplete="off" autocapitalize="words" spellcheck="false" />
           <button type="submit" class="primary-btn">Add to lineup</button>
         </form>
         <p class="microcopy">Misspellings and duplicate titles get a chooser instead of a tantrum.</p>
       </article>
 
-      <article class="panel weekly-panel">
+      <article class="panel weekly-panel" data-mobile-pane="upcoming">
         <div class="panel-heading">
           <h2>Upcoming episodes</h2>
           <span id="upcomingCount" class="pill neutral">0 tracked</span>
@@ -56,7 +62,7 @@
     </section>
 
     <main class="main-grid">
-      <section class="panel lineup-panel">
+      <section class="panel lineup-panel" data-mobile-pane="lineup">
         <div class="panel-heading">
           <h2>My lineup</h2>
           <div class="lineup-actions">
@@ -68,7 +74,7 @@
         </div>
       </section>
 
-      <aside class="panel detail-panel">
+      <aside class="panel detail-panel" data-mobile-pane="detail">
         <div id="detailEmpty" class="detail-empty">
           <h2>Show details</h2>
           <p>Select a show from the lineup to see seasons, cast, platforms, and upcoming episode info.</p>
@@ -100,7 +106,7 @@
       <form id="settingsForm" class="settings-form">
         <label>
           TMDb API key
-          <input id="tmdbKeyInput" type="password" placeholder="Paste your TMDb key" />
+          <input id="tmdbKeyInput" type="password" placeholder="Paste your TMDb key" autocomplete="off" />
         </label>
         <label>
           Watch region
@@ -153,6 +159,8 @@
       <td class="season-watched"></td>
     </tr>
   </template>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="app.js" defer></script>
 </body>

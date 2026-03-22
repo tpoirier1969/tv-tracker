@@ -1,4 +1,5 @@
-const STORAGE_KEY = 'tv-lineup-tracker-state-v1';
+const STORAGE_KEY = 'tv-lineup-tracker-state-v2';
+const FETCH_TIMEOUT_MS = 9000;
 
 const state = {
   settings: {
@@ -10,9 +11,11 @@ const state = {
   selectedId: null,
   upcomingFilter: '7',
   cache: {},
+  mobilePane: 'upcoming',
 };
 
 const els = {};
+let toastTimer = null;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -20,6 +23,7 @@ function init() {
   cacheElements();
   loadState();
   bindEvents();
+  activateMobilePane(state.mobilePane || 'upcoming');
   render();
 }
 
@@ -42,6 +46,8 @@ function cacheElements() {
   els.castCountInput = document.getElementById('castCountInput');
   els.exportBtn = document.getElementById('exportBtn');
   els.importFile = document.getElementById('importFile');
+  els.toast = document.getElementById('toast');
+  els.mobileTabs = [...document.querySelectorAll('[data-mobile-pane-button]')];
 }
 
 function bindEvents() {
@@ -61,6 +67,7 @@ function bindEvents() {
       renderUpcoming();
     });
   });
+  els.mobileTabs.forEach((btn) => btn.addEventListener('click', () => activateMobilePane(btn.dataset.mobilePaneButton)));
 }
 
 function loadState() {
@@ -69,22 +76,35 @@ function loadState() {
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (parsed?.settings) state.settings = { ...state.settings, ...parsed.settings };
-    if (Array.isArray(parsed?.shows)) state.shows = parsed.shows;
-    state.selectedId = parsed?.selectedId || state.shows[0]?.tvmazeId || null;
+    if (Array.isArray(parsed?.shows)) {
+      state.shows = parsed.shows.map((show) => ({
+        watched: {},
+        ...show,
+        id: show.id || (show.tmdbId ? `tmdb:${show.tmdbId}` : show.tvmazeId ? `tvmaze:${show.tvmazeId}` : crypto.randomUUID()),
+        source: show.source || (show.tmdbId ? 'tmdb' : 'tvmaze'),
+      }));
+    }
+    state.selectedId = parsed?.selectedId || state.shows[0]?.id || null;
+    state.mobilePane = parsed?.mobilePane || 'upcoming';
   } catch (err) {
     console.warn('Could not load saved state', err);
   }
 }
 
 function persistState() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      settings: state.settings,
-      shows: state.shows,
-      selectedId: state.selectedId,
-    })
-  );
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    settings: state.settings,
+    shows: state.shows,
+    selectedId: state.selectedId,
+    mobilePane: state.mobilePane,
+  }));
+}
+
+function activateMobilePane(name) {
+  state.mobilePane = name;
+  document.querySelectorAll('[data-mobile-pane]').forEach((el) => el.classList.toggle('active-pane', el.dataset.mobilePane === name));
+  els.mobileTabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.mobilePaneButton === name));
+  persistState();
 }
 
 function render() {
@@ -102,10 +122,9 @@ async function onAddShowSubmit(event) {
   try {
     const matches = await searchShows(query);
     if (!matches.length) {
-      toast(`No show match found for “${query}.”`);
+      toast(`No match found for “${query}.”`);
       return;
     }
-
     const choice = chooseSearchResult(query, matches);
     if (choice.type === 'auto') {
       await addShowToLineup(choice.show);
@@ -114,7 +133,7 @@ async function onAddShowSubmit(event) {
     }
   } catch (err) {
     console.error(err);
-    toast('Search hit a wall. Try again in a second.');
+    toast('Search failed. TMDb key missing or network blocked. Open Settings and paste your TMDb key.');
   } finally {
     setFormBusy(false);
   }
@@ -127,10 +146,35 @@ function setFormBusy(isBusy) {
 }
 
 async function searchShows(query) {
+  if (state.settings.tmdbApiKey) {
+    const results = await tmdbSearchShows(query);
+    return results.map((item) => ({ score: scoreTmdbMatch(query, item), show: normalizeTmdbSearchResult(item) }));
+  }
   const url = `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('TVMaze search failed');
-  return response.json();
+  const results = await fetchJson(url);
+  return Array.isArray(results) ? results : [];
+}
+
+function normalizeTmdbSearchResult(item) {
+  return {
+    id: item.id,
+    source: 'tmdb',
+    name: item.name,
+    premiered: item.first_air_date || '',
+    network: { name: item.networkName || '' },
+    image: item.poster_path ? { medium: `https://image.tmdb.org/t/p/w342${item.poster_path}` } : null,
+    raw: item,
+  };
+}
+
+function scoreTmdbMatch(raw, item) {
+  const rawNorm = normalizeTitle(raw);
+  const nameNorm = normalizeTitle(item.name || '');
+  let score = 0.5;
+  if (rawNorm === nameNorm) score += 0.4;
+  else if (nameNorm.includes(rawNorm) || rawNorm.includes(nameNorm)) score += 0.2;
+  if (item.popularity) score += Math.min(0.1, item.popularity / 500);
+  return Math.min(0.99, score);
 }
 
 function normalizeTitle(value) {
@@ -151,10 +195,7 @@ function chooseSearchResult(raw, results) {
     return { type: 'auto', show: top.show };
   }
 
-  return {
-    type: 'choose',
-    candidates: results.slice(0, 6).map((result) => result.show),
-  };
+  return { type: 'choose', candidates: results.slice(0, 6).map((result) => result.show) };
 }
 
 function openChooser(candidates) {
@@ -175,9 +216,7 @@ function openChooser(candidates) {
   els.chooserModal.classList.remove('hidden');
 }
 
-function closeChooser() {
-  els.chooserModal.classList.add('hidden');
-}
+function closeChooser() { els.chooserModal.classList.add('hidden'); }
 
 function openSettings() {
   els.tmdbKeyInput.value = state.settings.tmdbApiKey || '';
@@ -186,9 +225,7 @@ function openSettings() {
   els.settingsModal.classList.remove('hidden');
 }
 
-function closeSettings() {
-  els.settingsModal.classList.add('hidden');
-}
+function closeSettings() { els.settingsModal.classList.add('hidden'); }
 
 function saveSettings(event) {
   event.preventDefault();
@@ -203,28 +240,42 @@ function saveSettings(event) {
 }
 
 async function addShowToLineup(show) {
-  if (state.shows.some((item) => item.tvmazeId === show.id)) {
-    state.selectedId = show.id;
+  const entry = show.source === 'tmdb'
+    ? {
+        id: `tmdb:${show.id}`,
+        source: 'tmdb',
+        tmdbId: show.id,
+        name: show.name,
+        premiered: show.premiered,
+        watched: {},
+        addedAt: new Date().toISOString(),
+      }
+    : {
+        id: `tvmaze:${show.id}`,
+        source: 'tvmaze',
+        tvmazeId: show.id,
+        name: show.name,
+        premiered: show.premiered,
+        watched: {},
+        addedAt: new Date().toISOString(),
+      };
+
+  if (state.shows.some((item) => item.id === entry.id || (entry.tmdbId && item.tmdbId === entry.tmdbId))) {
+    state.selectedId = state.shows.find((item) => item.id === entry.id || (entry.tmdbId && item.tmdbId === entry.tmdbId))?.id || state.selectedId;
     persistState();
     render();
     toast('That show is already in your lineup.');
+    activateMobilePane('detail');
     return;
   }
 
-  const entry = {
-    tvmazeId: show.id,
-    name: show.name,
-    addedAt: new Date().toISOString(),
-    watched: {},
-  };
-
   state.shows.unshift(entry);
-  state.selectedId = entry.tvmazeId;
+  state.selectedId = entry.id;
   persistState();
   els.showSearch.value = '';
-
-  await hydrateShow(entry.tvmazeId, { force: true });
+  await hydrateShow(entry.id, { force: true });
   render();
+  activateMobilePane('detail');
 }
 
 async function refreshAllShows() {
@@ -233,160 +284,154 @@ async function refreshAllShows() {
   els.refreshAllBtn.textContent = 'Refreshing…';
   try {
     for (const show of state.shows) {
-      await hydrateShow(show.tvmazeId, { force: true });
+      await hydrateShow(show.id, { force: true });
     }
     render();
     toast('Lineup refreshed.');
   } catch (err) {
     console.error(err);
-    toast('Refresh stumbled on one of the API calls.');
+    toast('Refresh hit a wall. Check your TMDb key in Settings.');
   } finally {
     els.refreshAllBtn.disabled = false;
     els.refreshAllBtn.textContent = 'Refresh all';
   }
 }
 
-async function hydrateShow(tvmazeId, { force = false } = {}) {
-  const cacheKey = `${tvmazeId}|${state.settings.watchRegion}|${state.settings.castCount}`;
+async function hydrateShow(showId, { force = false } = {}) {
+  const entry = state.shows.find((item) => item.id === showId);
+  if (!entry) return null;
+  const cacheKey = `${entry.id}|${state.settings.watchRegion}|${state.settings.castCount}|${Boolean(state.settings.tmdbApiKey)}`;
   if (!force && state.cache[cacheKey]) return state.cache[cacheKey];
 
-  const [showResp, seasonsResp, episodesResp, castResp] = await Promise.all([
-    fetchJson(`https://api.tvmaze.com/shows/${tvmazeId}`),
-    fetchJson(`https://api.tvmaze.com/shows/${tvmazeId}/seasons`),
-    fetchJson(`https://api.tvmaze.com/shows/${tvmazeId}/episodes`),
-    fetchJson(`https://api.tvmaze.com/shows/${tvmazeId}/cast`),
-  ]);
-
-  let nextEpisode = null;
-  if (showResp?._links?.nextepisode?.href) {
-    try {
-      nextEpisode = await fetchJson(showResp._links.nextepisode.href);
-    } catch (err) {
-      console.warn('Could not load next episode', err);
-    }
+  let bundle;
+  if (entry.tmdbId || state.settings.tmdbApiKey) {
+    bundle = await hydrateViaTmdb(entry);
+  } else if (entry.tvmazeId) {
+    bundle = await hydrateViaTvmaze(entry);
+  } else {
+    throw new Error('No usable show ID');
   }
-
-  const fallbackCast = (castResp || [])
-    .map((item) => item?.person?.name)
-    .filter(Boolean)
-    .slice(0, state.settings.castCount)
-    .join(', ');
-
-  let tmdb = null;
-  if (state.settings.tmdbApiKey) {
-    try {
-      tmdb = await getTmdbBundle(showResp);
-    } catch (err) {
-      console.warn('TMDb enrichment failed', err);
-    }
-  }
-
-  const providerNames = tmdb?.streaming || '';
-  const mainChannel = showResp.network?.name || showResp.webChannel?.name || '';
-  const episodeCounts = countEpisodesBySeason(episodesResp || []);
-  const seasonRows = (seasonsResp || []).slice().sort((a, b) => (a.number || 0) - (b.number || 0)).map((season, index) => {
-    const seasonNum = season.number || null;
-    const tmdbSeason = seasonNum != null ? tmdb?.seasonMap?.[seasonNum] : null;
-    const releaseDate = season.premiereDate || tmdbSeason?.airDate || (index === 0 ? showResp.premiered || 'TBA' : 'TBA');
-    const seasonDesc = tmdbSeason?.overview || (index === 0 ? stripHtml(showResp.summary || '') : '');
-    const seasonCast = tmdbSeason?.cast?.length
-      ? tmdbSeason.cast.join(', ')
-      : fallbackCast
-        ? `${fallbackCast} (series cast)`
-        : '';
-    const nextEpisodeText = nextEpisode && Number(nextEpisode.season) === Number(seasonNum)
-      ? formatNextEpisode(nextEpisode)
-      : '';
-
-    return {
-      season: seasonNum,
-      episodes: episodeCounts[seasonNum] || season.episodeOrder || '',
-      releaseDate,
-      description: seasonDesc,
-      cast: seasonCast,
-      platform: providerNames,
-      nextEpisode: nextEpisodeText,
-    };
-  });
-
-  const bundle = {
-    tvmazeId,
-    show: showResp,
-    seasons: seasonRows,
-    nextEpisode,
-    fallbackCast,
-    mainChannel,
-    streaming: providerNames,
-    tmdbId: tmdb?.tmdbId || null,
-    refreshedAt: new Date().toISOString(),
-  };
 
   state.cache[cacheKey] = bundle;
-
-  const showEntry = state.shows.find((item) => item.tvmazeId === tvmazeId);
-  if (showEntry) {
-    showEntry.name = showResp.name;
-    if (tmdb?.tmdbId) showEntry.tmdbId = tmdb.tmdbId;
-  }
   persistState();
-
   return bundle;
 }
 
-async function getTmdbBundle(tvmazeShow) {
+async function hydrateViaTmdb(entry) {
   const apiKey = state.settings.tmdbApiKey;
-  const tmdbId = await findTmdbSeriesId(tvmazeShow, apiKey);
-  if (!tmdbId) return null;
+  if (!apiKey) throw new Error('TMDb key missing');
+  let tmdbId = entry.tmdbId;
+  if (!tmdbId) tmdbId = await findTmdbSeriesIdByName(entry.name, entry.premiered || '', apiKey);
+  if (!tmdbId) throw new Error('Could not resolve TMDb ID');
 
-  const [details, providers] = await Promise.all([
+  const [details, providers, credits] = await Promise.all([
     fetchJson(tmdbUrl(`/tv/${tmdbId}`, apiKey, { language: 'en-US' })),
     fetchJson(tmdbUrl(`/tv/${tmdbId}/watch/providers`, apiKey)),
+    fetchJson(tmdbUrl(`/tv/${tmdbId}/aggregate_credits`, apiKey, { language: 'en-US' })),
   ]);
 
-  const seasonMap = {};
-  const seasons = Array.isArray(details?.seasons) ? details.seasons : [];
+  entry.tmdbId = tmdbId;
+  entry.name = details.name || entry.name;
+  entry.poster = details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : '';
+
+  const showCastFallback = topCastFromAggregateCredits(credits, state.settings.castCount);
+  const streaming = formatWatchProviders(providers, state.settings.watchRegion);
+  const mainChannel = Array.isArray(details.networks) && details.networks.length ? details.networks[0].name : '';
+  const nextEpisode = normalizeTmdbNextEpisode(details.next_episode_to_air);
+
+  const seasons = Array.isArray(details.seasons) ? details.seasons.filter((s) => s && s.season_number > 0) : [];
+  const seasonRows = [];
   for (const season of seasons) {
-    if (season?.season_number == null) continue;
     const seasonNumber = season.season_number;
     const [seasonDetails, seasonCredits] = await Promise.all([
       fetchJson(tmdbUrl(`/tv/${tmdbId}/season/${seasonNumber}`, apiKey, { language: 'en-US' })),
       fetchJson(tmdbUrl(`/tv/${tmdbId}/season/${seasonNumber}/credits`, apiKey, { language: 'en-US' })),
     ]);
 
-    const cast = Array.isArray(seasonCredits?.cast)
-      ? seasonCredits.cast
-          .slice()
-          .sort((a, b) => (a?.order ?? 9999) - (b?.order ?? 9999))
-          .map((person) => person?.name)
-          .filter(Boolean)
-          .slice(0, state.settings.castCount)
-      : [];
+    const seasonCast = topCastFromSeasonCredits(seasonCredits, state.settings.castCount);
+    const releaseDate = seasonDetails.air_date || season.air_date || (seasonNumber === 1 ? details.first_air_date || 'TBA' : 'TBA');
+    const description = (seasonDetails.overview || '').trim() || (seasonNumber === 1 ? stripHtml(details.overview || '') : '');
+    const nextEpisodeText = nextEpisode && Number(nextEpisode.season) === Number(seasonNumber) ? formatNextEpisode(nextEpisode) : '';
 
-    seasonMap[seasonNumber] = {
-      airDate: seasonDetails?.air_date || '',
-      overview: seasonDetails?.overview?.trim() || '',
-      cast,
-    };
+    seasonRows.push({
+      season: seasonNumber,
+      episodes: seasonDetails.episodes?.length || season.episode_count || '',
+      releaseDate,
+      description,
+      cast: seasonCast.length ? seasonCast.join(', ') : showCastFallback.length ? `${showCastFallback.join(', ')} (series cast)` : '',
+      platform: streaming,
+      nextEpisode: nextEpisodeText,
+    });
   }
 
   return {
+    id: entry.id,
+    source: 'tmdb',
     tmdbId,
-    seasonMap,
-    streaming: formatWatchProviders(providers, state.settings.watchRegion),
+    tvmazeId: entry.tvmazeId || null,
+    show: {
+      name: details.name || entry.name,
+      image: { medium: entry.poster || '' },
+      summary: details.overview || '',
+      status: details.status || 'Unknown',
+    },
+    seasons: seasonRows,
+    nextEpisode,
+    mainChannel,
+    streaming,
+    refreshedAt: new Date().toISOString(),
   };
 }
 
-async function findTmdbSeriesId(tvmazeShow, apiKey) {
-  const query = tvmazeShow?.name || '';
-  if (!query) return null;
-  const results = await fetchJson(tmdbUrl('/search/tv', apiKey, { query, language: 'en-US' }));
+async function hydrateViaTvmaze(entry) {
+  const showResp = await fetchJson(`https://api.tvmaze.com/shows/${entry.tvmazeId}`);
+  const [seasonsResp, episodesResp, castResp] = await Promise.all([
+    fetchJson(`https://api.tvmaze.com/shows/${entry.tvmazeId}/seasons`),
+    fetchJson(`https://api.tvmaze.com/shows/${entry.tvmazeId}/episodes`),
+    fetchJson(`https://api.tvmaze.com/shows/${entry.tvmazeId}/cast`),
+  ]);
+  let nextEpisode = null;
+  if (showResp?._links?.nextepisode?.href) {
+    try { nextEpisode = await fetchJson(showResp._links.nextepisode.href); } catch (_) {}
+  }
+  const fallbackCast = (castResp || []).map((item) => item?.person?.name).filter(Boolean).slice(0, state.settings.castCount);
+  const episodeCounts = countEpisodesBySeason(episodesResp || []);
+  const seasonRows = (seasonsResp || []).slice().sort((a,b)=>(a.number||0)-(b.number||0)).map((season, index) => ({
+    season: season.number || null,
+    episodes: episodeCounts[season.number] || season.episodeOrder || '',
+    releaseDate: season.premiereDate || (index === 0 ? showResp.premiered || 'TBA' : 'TBA'),
+    description: index === 0 ? stripHtml(showResp.summary || '') : '',
+    cast: fallbackCast.length ? `${fallbackCast.join(', ')} (series cast)` : '',
+    platform: '',
+    nextEpisode: nextEpisode && Number(nextEpisode.season) === Number(season.number) ? formatNextEpisode(nextEpisode) : '',
+  }));
+  return {
+    id: entry.id,
+    source: 'tvmaze',
+    tmdbId: entry.tmdbId || null,
+    tvmazeId: entry.tvmazeId,
+    show: showResp,
+    seasons: seasonRows,
+    nextEpisode,
+    mainChannel: showResp.network?.name || showResp.webChannel?.name || '',
+    streaming: '',
+    refreshedAt: new Date().toISOString(),
+  };
+}
+
+async function tmdbSearchShows(query) {
+  const data = await fetchJson(tmdbUrl('/search/tv', state.settings.tmdbApiKey, { query, language: 'en-US' }));
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+async function findTmdbSeriesIdByName(name, premiered, apiKey) {
+  const results = await fetchJson(tmdbUrl('/search/tv', apiKey, { query: name, language: 'en-US' }));
   const list = Array.isArray(results?.results) ? results.results : [];
   if (!list.length) return null;
-
-  const premieredYear = tvmazeShow?.premiered?.slice?.(0, 4) || '';
+  const premieredYear = premiered?.slice?.(0,4) || '';
   let best = list[0];
   if (premieredYear) {
-    const match = list.find((item) => item?.first_air_date?.slice(0, 4) === premieredYear);
+    const match = list.find((item) => item?.first_air_date?.slice(0,4) === premieredYear);
     if (match) best = match;
   }
   return best?.id || null;
@@ -401,22 +446,41 @@ function tmdbUrl(path, apiKey, params = {}) {
   return url.toString();
 }
 
+function normalizeTmdbNextEpisode(ep) {
+  if (!ep) return null;
+  return { season: ep.season_number, number: ep.episode_number, airdate: ep.air_date || '', airstamp: ep.air_date || '' };
+}
+
+function topCastFromAggregateCredits(credits, count) {
+  const cast = Array.isArray(credits?.cast) ? credits.cast : [];
+  return cast
+    .slice()
+    .sort((a, b) => (a?.order ?? 9999) - (b?.order ?? 9999))
+    .map((item) => item?.name)
+    .filter(Boolean)
+    .slice(0, count);
+}
+
+function topCastFromSeasonCredits(credits, count) {
+  const cast = Array.isArray(credits?.cast) ? credits.cast : [];
+  return cast
+    .slice()
+    .sort((a, b) => (a?.order ?? 9999) - (b?.order ?? 9999))
+    .map((item) => item?.name)
+    .filter(Boolean)
+    .slice(0, count);
+}
+
 function formatWatchProviders(payload, region) {
   const providers = payload?.results?.[region];
   if (!providers) return '';
-
-  const names = [
-    ...(providers.flatrate || []),
-    ...(providers.free || []),
-    ...(providers.ads || []),
-    ...(providers.rent || []),
-    ...(providers.buy || []),
-  ]
-    .map((item) => item?.provider_name)
-    .filter(Boolean);
-
-  const unique = [...new Set(names)];
-  return unique.join(', ');
+  let names = [];
+  if (Array.isArray(providers.flatrate) && providers.flatrate.length) names = providers.flatrate;
+  else if (Array.isArray(providers.free) && providers.free.length) names = providers.free;
+  else if (Array.isArray(providers.ads) && providers.ads.length) names = providers.ads;
+  else if (Array.isArray(providers.rent) && providers.rent.length) names = providers.rent;
+  else if (Array.isArray(providers.buy) && providers.buy.length) names = providers.buy;
+  return [...new Set(names.map((item) => item?.provider_name).filter(Boolean))].join(', ');
 }
 
 function countEpisodesBySeason(episodes) {
@@ -429,22 +493,26 @@ function countEpisodesBySeason(episodes) {
 }
 
 function formatNextEpisode(episode) {
-  const date = episode?.airdate || (episode?.airstamp ? episode.airstamp.slice(0, 10) : 'TBA');
+  const date = episode?.airdate || (episode?.airstamp ? String(episode.airstamp).slice(0, 10) : 'TBA');
   return `${date} (S${episode?.season ?? '?'}E${episode?.number ?? '?'})`;
 }
 
-function renderLineup() {
+async function renderLineup() {
   if (!state.shows.length) {
     els.lineupGrid.className = 'lineup-grid empty-state-box';
-    els.lineupGrid.innerHTML = '<p>No shows saved yet. Add one above and this starts looking a lot less like a spreadsheet.</p>';
+    els.lineupGrid.innerHTML = '<p>No shows saved yet. Add one above and this stops acting like a spreadsheet.</p>';
     return;
   }
 
   els.lineupGrid.className = 'lineup-grid';
   els.lineupGrid.innerHTML = '';
 
-  state.shows.forEach(async (entry) => {
-    const bundle = await hydrateShow(entry.tvmazeId);
+  for (const entry of state.shows) {
+    const bundle = await hydrateShow(entry.id).catch((err) => {
+      console.error(err);
+      return null;
+    });
+    if (!bundle) continue;
     const card = document.getElementById('lineupCardTemplate').content.firstElementChild.cloneNode(true);
     const image = card.querySelector('.lineup-card__image');
     const title = card.querySelector('.lineup-card__title');
@@ -455,7 +523,6 @@ function renderLineup() {
     image.src = bundle.show?.image?.medium || 'https://placehold.co/300x450/11192f/eef4ff?text=TV';
     image.alt = `${bundle.show?.name || entry.name} poster`;
     title.textContent = bundle.show?.name || entry.name;
-
     const seasonCount = bundle.seasons.length;
     meta.textContent = `${seasonCount} season${seasonCount === 1 ? '' : 's'} saved`;
 
@@ -466,23 +533,21 @@ function renderLineup() {
     next.textContent = bundle.nextEpisode ? `Next: ${formatNextEpisode(bundle.nextEpisode)}` : 'No known next episode date right now.';
 
     card.querySelector('.lineup-card__open').addEventListener('click', () => {
-      state.selectedId = entry.tvmazeId;
+      state.selectedId = entry.id;
       persistState();
       renderSelectedDetail();
+      activateMobilePane('detail');
     });
-
     card.querySelector('.lineup-card__refresh').addEventListener('click', async () => {
-      await hydrateShow(entry.tvmazeId, { force: true });
+      await hydrateShow(entry.id, { force: true });
       render();
       toast(`Refreshed ${bundle.show?.name || entry.name}.`);
     });
+    card.querySelector('.lineup-card__delete').addEventListener('click', () => removeShow(entry.id));
 
-    card.querySelector('.lineup-card__delete').addEventListener('click', () => removeShow(entry.tvmazeId));
-
-    if (state.selectedId === entry.tvmazeId) card.style.outline = '2px solid rgba(124,156,255,.55)';
-
+    if (state.selectedId === entry.id) card.style.outline = '2px solid rgba(124,156,255,.55)';
     els.lineupGrid.appendChild(card);
-  });
+  }
 }
 
 function makeBadge(text, variant = '') {
@@ -492,12 +557,10 @@ function makeBadge(text, variant = '') {
   return span;
 }
 
-function removeShow(tvmazeId) {
-  state.shows = state.shows.filter((show) => show.tvmazeId !== tvmazeId);
-  Object.keys(state.cache)
-    .filter((key) => key.startsWith(`${tvmazeId}|`))
-    .forEach((key) => delete state.cache[key]);
-  if (state.selectedId === tvmazeId) state.selectedId = state.shows[0]?.tvmazeId || null;
+function removeShow(id) {
+  state.shows = state.shows.filter((show) => show.id !== id);
+  Object.keys(state.cache).filter((key) => key.startsWith(`${id}|`)).forEach((key) => delete state.cache[key]);
+  if (state.selectedId === id) state.selectedId = state.shows[0]?.id || null;
   persistState();
   render();
 }
@@ -510,13 +573,21 @@ async function renderSelectedDetail() {
     return;
   }
 
-  const bundle = await hydrateShow(state.selectedId);
-  const entry = state.shows.find((item) => item.tvmazeId === state.selectedId);
+  const bundle = await hydrateShow(state.selectedId).catch((err) => {
+    console.error(err);
+    els.detailEmpty.classList.remove('hidden');
+    els.detailView.classList.add('hidden');
+    els.detailView.innerHTML = '';
+    toast('Could not load that show.');
+    return null;
+  });
+  if (!bundle) return;
+  const entry = state.shows.find((item) => item.id === state.selectedId);
 
   els.detailEmpty.classList.add('hidden');
   els.detailView.classList.remove('hidden');
 
-  const poster = bundle.show?.image?.original || bundle.show?.image?.medium || 'https://placehold.co/400x600/11192f/eef4ff?text=TV';
+  const poster = bundle.show?.image?.medium || 'https://placehold.co/400x600/11192f/eef4ff?text=TV';
   const status = bundle.show?.status || 'Unknown';
   const nextEpisodeText = bundle.nextEpisode ? formatNextEpisode(bundle.nextEpisode) : 'No date announced';
   const summary = stripHtml(bundle.show?.summary || 'No summary available.');
@@ -533,7 +604,7 @@ async function renderSelectedDetail() {
           <div class="stat-card"><span class="label">Streaming</span><span class="value">${escapeHtml(streaming)}</span></div>
           <div class="stat-card"><span class="label">Next episode</span><span class="value">${escapeHtml(nextEpisodeText)}</span></div>
           <div class="stat-card"><span class="label">Status</span><span class="value">${escapeHtml(status)}</span></div>
-          <div class="stat-card"><span class="label">TVMaze ID</span><span class="value">${escapeHtml(String(bundle.tvmazeId))}</span></div>
+          <div class="stat-card"><span class="label">Source</span><span class="value">${escapeHtml(bundle.source.toUpperCase())}</span></div>
           <div class="stat-card"><span class="label">Last refreshed</span><span class="value">${escapeHtml(formatDateTime(bundle.refreshedAt))}</span></div>
         </div>
       </div>
@@ -542,14 +613,7 @@ async function renderSelectedDetail() {
       <table class="detail-table">
         <thead>
           <tr>
-            <th>Season</th>
-            <th>Episodes</th>
-            <th>Release date</th>
-            <th>Description</th>
-            <th>Starring</th>
-            <th>Streaming</th>
-            <th>Next episode</th>
-            <th>Watched?</th>
+            <th>Season</th><th>Episodes</th><th>Release</th><th>Description</th><th>Starring</th><th>Streaming</th><th>Next episode</th><th>Watched?</th>
           </tr>
         </thead>
         <tbody id="seasonTableBody"></tbody>
@@ -572,7 +636,7 @@ async function renderSelectedDetail() {
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(entry?.watched?.[seasonRow.season]);
     checkbox.addEventListener('change', () => {
-      const showEntry = state.shows.find((item) => item.tvmazeId === bundle.tvmazeId);
+      const showEntry = state.shows.find((item) => item.id === bundle.id);
       if (!showEntry) return;
       showEntry.watched = showEntry.watched || {};
       showEntry.watched[seasonRow.season] = checkbox.checked;
@@ -581,7 +645,6 @@ async function renderSelectedDetail() {
       renderLineup();
     });
     row.querySelector('.season-watched').appendChild(checkbox);
-
     if (checkbox.checked) row.classList.add('watched-row');
     tbody.appendChild(row);
   });
@@ -590,20 +653,19 @@ async function renderSelectedDetail() {
 async function renderUpcoming() {
   const items = [];
   for (const show of state.shows) {
-    const bundle = await hydrateShow(show.tvmazeId);
-    if (!bundle.nextEpisode?.airdate) continue;
+    const bundle = await hydrateShow(show.id).catch(() => null);
+    if (!bundle?.nextEpisode?.airdate) continue;
     items.push({
       name: bundle.show?.name || show.name,
       date: bundle.nextEpisode.airdate,
       season: bundle.nextEpisode.season,
       episode: bundle.nextEpisode.number,
       platform: bundle.streaming?.split(',')[0] || bundle.mainChannel || 'Unknown',
-      tvmazeId: show.tvmazeId,
+      id: show.id,
     });
   }
 
-  items.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
-
+  items.sort((a,b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
   const now = startOfToday();
   const filter = state.upcomingFilter;
   const filtered = items.filter((item) => {
@@ -622,7 +684,6 @@ async function renderUpcoming() {
 
   els.upcomingList.className = 'upcoming-list';
   els.upcomingList.innerHTML = '';
-
   filtered.forEach((item) => {
     const card = document.createElement('article');
     card.className = 'upcoming-item';
@@ -631,23 +692,18 @@ async function renderUpcoming() {
     const day = dateObj.toLocaleDateString(undefined, { day: 'numeric' });
     const weekday = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
     const delta = daysBetween(startOfToday(), dateObj);
-
     card.innerHTML = `
       <div class="upcoming-date"><div><span>${escapeHtml(month)}</span><strong>${escapeHtml(day)}</strong><span>${escapeHtml(weekday)}</span></div></div>
-      <div class="upcoming-meta">
-        <h3>${escapeHtml(item.name)}</h3>
-        <p>S${escapeHtml(String(item.season))}E${escapeHtml(String(item.episode))} · ${delta === 0 ? 'Drops today' : delta === 1 ? 'Drops tomorrow' : `Drops in ${delta} days`}</p>
-      </div>
+      <div class="upcoming-meta"><h3>${escapeHtml(item.name)}</h3><p>S${escapeHtml(String(item.season))}E${escapeHtml(String(item.episode))} · ${delta === 0 ? 'Drops today' : delta === 1 ? 'Drops tomorrow' : `Drops in ${delta} days`}</p></div>
       <div class="upcoming-service">${escapeHtml(item.platform)}</div>
     `;
-
     card.addEventListener('click', () => {
-      state.selectedId = item.tvmazeId;
+      state.selectedId = item.id;
       persistState();
       renderSelectedDetail();
+      activateMobilePane('detail');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
-
     els.upcomingList.appendChild(card);
   });
 }
@@ -669,8 +725,10 @@ async function importStateFile(event) {
     const text = await file.text();
     const payload = JSON.parse(text);
     if (payload?.settings) state.settings = { ...state.settings, ...payload.settings };
-    if (Array.isArray(payload?.shows)) state.shows = payload.shows;
-    state.selectedId = state.shows[0]?.tvmazeId || null;
+    if (Array.isArray(payload?.shows)) {
+      state.shows = payload.shows.map((show) => ({ watched: {}, ...show, id: show.id || (show.tmdbId ? `tmdb:${show.tmdbId}` : show.tvmazeId ? `tvmaze:${show.tvmazeId}` : crypto.randomUUID()), source: show.source || (show.tmdbId ? 'tmdb' : 'tvmaze') }));
+    }
+    state.selectedId = state.shows[0]?.id || null;
     state.cache = {};
     persistState();
     render();
@@ -683,20 +741,20 @@ async function importStateFile(event) {
   }
 }
 
-function fetchJson(url) {
-  return fetch(url).then((response) => {
+async function fetchJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-    return response.json();
-  });
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function stripHtml(html) {
-  return (html || '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]*>/g, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function formatDateTime(value) {
@@ -709,25 +767,15 @@ function startOfToday() {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
-
-function daysBetween(a, b) {
-  return Math.round((b - a) / 86400000);
-}
-
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function escapeAttr(str) {
-  return escapeHtml(str);
-}
+function daysBetween(a,b){ return Math.round((b-a)/86400000); }
+function escapeHtml(str) { return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+function escapeAttr(str) { return escapeHtml(str); }
 
 function toast(message) {
-  // intentionally dead simple: title bar text swap would be overkill
   console.log(message);
+  if (!els.toast) return;
+  els.toast.textContent = message;
+  els.toast.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => els.toast.classList.add('hidden'), 5000);
 }

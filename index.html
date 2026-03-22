@@ -19,7 +19,7 @@
         </nav>
         <div class="title-row">
           <p class="eyebrow">Shared tracker</p>
-          <span id="versionFlag" class="version-flag">v4.5.2</span>
+          <span id="versionFlag" class="version-flag">v4.6.0</span>
         </div>
         <h1>TV Lineup Tracker</h1>
         <p class="subhead">Cleaner lineup workflow, safer Supabase sync, and windows that don’t trap you.</p>
@@ -31,9 +31,7 @@
         <button id="syncNowBtn" class="ghost-btn">Sync now</button>
         <button id="settingsBtn" class="ghost-btn">Settings</button>
         <button id="exportBtn" class="ghost-btn">Export</button>
-        <button id="exportConfigBtn" class="ghost-btn">Save config</button>
-        <button id="copyConfigBtn" class="ghost-btn">Copy config</button>
-        <label class="ghost-btn file-label" for="importFile">Import</label>
+                <label class="ghost-btn file-label" for="importFile">Import</label>
         <input id="importFile" type="file" accept="application/json" hidden />
       </div>
     </header>
@@ -149,9 +147,7 @@
         <div class="settings-actions wrap-actions">
           <button type="button" class="ghost-btn" data-close-settings>Close</button>
           <button type="submit" class="primary-btn">Save settings</button>
-          <button type="button" id="settingsExportConfigBtn" class="ghost-btn small">Export config.js</button>
-          <button type="button" id="settingsCopyConfigBtn" class="ghost-btn small">Copy config</button>
-        </div>
+                  </div>
       </form>
       <div id="syncErrorDetail" class="sync-error-detail hidden"></div>
       <div class="settings-note">
@@ -207,21 +203,16 @@
     <article class="lineup-card">
       <div class="lineup-card__body">
         <div class="lineup-card__title-row">
-          <div class="lineup-card__title-group">
-            <h3 class="lineup-card__title"></h3>
-            <div class="lineup-card__inline-actions">
-              <button class="ghost-btn small lineup-card__open">Open</button>
-              <button class="ghost-btn small lineup-card__assign">Assign</button>
-            </div>
-          </div>
-          <div class="lineup-card__utility-actions">
-            <button class="ghost-btn small lineup-card__refresh">Refresh</button>
-            <button class="icon-btn danger lineup-card__delete" title="Remove show">✕</button>
-          </div>
+          <h3 class="lineup-card__title"></h3>
+          <button class="icon-btn danger lineup-card__delete" title="Remove show">✕</button>
         </div>
-        <div class="lineup-card__info-row">
-          <p class="lineup-card__meta"></p>
-          <div class="lineup-card__badges"></div>
+        <div class="lineup-card__row lineup-card__row--meta">
+          <div class="lineup-card__meta"></div>
+          <button class="ghost-btn small lineup-card__open">Details</button>
+        </div>
+        <div class="lineup-card__row lineup-card__row--assign">
+          <p class="lineup-card__assigned"></p>
+          <button class="ghost-btn small lineup-card__assign">Assign user</button>
         </div>
         <p class="lineup-card__next"></p>
       </div>
@@ -247,6 +238,6 @@
 
   <script src="config.js"></script>
   <script src="app.js" defer></script>
-  <footer class="app-footer"><span id="footerVersion">v4.5.2</span> · shared lineup dashboard</footer>
+  <footer class="app-footer"><span id="footerVersion">v4.6.0</span> · shared lineup dashboard</footer>
 </body>
 </html>

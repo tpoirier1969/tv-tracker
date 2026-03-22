@@ -1,5 +1,6 @@
-const APP_VERSION = 'v4.5.3';
+const APP_VERSION = 'v4.6.0';
 const BUILD_DATE = '2026-03-22';
+let lineupHydrationToken = 0;
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
 const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings-v4-2';
 const LEGACY_STATE_KEYS = ['tv-lineup-tracker-state-v4-2', 'tv-lineup-tracker-state', 'tv-lineup-tracker-state-v4', 'tv-lineup-tracker-state-v3'];
@@ -1039,6 +1040,8 @@ async function hydrateViaTmdb(entry) {
       image: { medium: entry.poster || '' },
       summary: details.overview || '',
       status: details.status || 'Unknown',
+      lastAirDate: details.last_air_date || '',
+      inProduction: Boolean(details.in_production),
     },
     seasons: seasonRows,
     nextEpisode,
@@ -1075,7 +1078,7 @@ async function hydrateViaTvmaze(entry) {
     source: 'tvmaze',
     tmdbId: entry.tmdbId || null,
     tvmazeId: entry.tvmazeId,
-    show: showResp,
+    show: { ...showResp, lastAirDate: showResp.ended || '', inProduction: /running|to be determined|in development/i.test(String(showResp.status || '')) },
     seasons: seasonRows,
     nextEpisode,
     mainChannel: showResp.network?.name || showResp.webChannel?.name || '',
@@ -1162,17 +1165,86 @@ function formatNextEpisode(episode) {
   return `${date} (S${episode?.season ?? '?'}E${episode?.number ?? '?'})`;
 }
 
+function uniqueBits(...bits) {
+  const seen = new Set();
+  return bits.filter(Boolean).filter((bit) => {
+    const key = normalizeTitle(String(bit));
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function inferLineupStatus(entry, bundle) {
+  if (bundle?.nextEpisode) {
+    return {
+      variant: 'scheduled',
+      text: `Next scheduled: ${formatNextEpisode(bundle.nextEpisode)}`,
+    };
+  }
+
+  const rawStatus = String(bundle?.show?.status || '').toLowerCase();
+  const lastAirDate = bundle?.show?.lastAirDate || bundle?.show?.ended || entry.lastAirDate || entry.ended || '';
+  const inProduction = Boolean(bundle?.show?.inProduction);
+
+  if (rawStatus.includes('ended')) return { variant: 'ended', text: 'Series ended.' };
+  if (rawStatus.includes('cancel')) return { variant: 'ended', text: 'Series canceled.' };
+  if (rawStatus.includes('returning') || rawStatus.includes('planned') || rawStatus.includes('production') || inProduction) {
+    return { variant: 'returning', text: 'New season expected, but no release date is announced yet.' };
+  }
+
+  if (lastAirDate) {
+    const last = new Date(lastAirDate);
+    const ageDays = Number.isFinite(last.getTime()) ? Math.floor((Date.now() - last.getTime()) / 86400000) : null;
+    if (ageDays !== null && ageDays > 730) {
+      return { variant: 'ended', text: 'Likely ended — no new episode in over 2 years.' };
+    }
+  }
+
+  return bundle
+    ? { variant: '', text: 'No known scheduled episode date right now.' }
+    : { variant: '', text: 'Loading details…' };
+}
+
+function buildLineupMeta(entry, bundle) {
+  const seasonCount = (bundle?.seasons?.length ?? Number(entry.seasonCount || 0) ?? 0);
+  const seasonText = `${seasonCount || '—'} season${seasonCount === 1 ? '' : 's'}`;
+  const availability = uniqueBits(bundle?.mainChannel || entry.network || '', bundle?.streaming || entry.streaming || '');
+  return uniqueBits(seasonText, ...availability).join(' · ');
+}
+
+function queueLineupHydration(shows) {
+  const uncached = shows.filter((show) => !getCachedBundleForShow(show));
+  if (!uncached.length) return;
+  const token = ++lineupHydrationToken;
+  (async () => {
+    let changed = false;
+    for (const show of uncached) {
+      try {
+        await hydrateShow(show.id);
+        changed = true;
+      } catch (err) {
+        console.error(err);
+      }
+      if (token !== lineupHydrationToken) return;
+    }
+    if (changed && token === lineupHydrationToken) render();
+  })();
+}
+
 async function renderLineup() {
   const scopedShows = getUserScopedShows();
   const visibleShows = [];
   for (const show of scopedShows) {
-    const bundle = await hydrateShow(show.id).catch((err) => {
-      console.error(err);
-      return null;
-    });
-    if (state.upcomingFilter === '21' && !showScheduledInNext21(show, bundle)) continue;
+    const bundle = getCachedBundleForShow(show);
+    if (state.upcomingFilter === '21' && bundle && !showScheduledInNext21(show, bundle)) continue;
+    if (state.upcomingFilter === '21' && !bundle) {
+      visibleShows.push({ entry: show, bundle: null });
+      continue;
+    }
     visibleShows.push({ entry: show, bundle });
   }
+  queueLineupHydration(scopedShows);
   if (els.lineupCountPill) els.lineupCountPill.textContent = `${visibleShows.length} visible`;
   const title = document.getElementById('lineupTitleText');
   if (title) title.textContent = state.upcomingFilter === '21' ? `Lineup · ${visibleShows.length} scheduled next 3 weeks` : 'Lineup';
@@ -1189,25 +1261,19 @@ async function renderLineup() {
 
   for (const { entry, bundle } of visibleShows) {
     const card = document.getElementById('lineupCardTemplate').content.firstElementChild.cloneNode(true);
-    const title = card.querySelector('.lineup-card__title');
-    const meta = card.querySelector('.lineup-card__meta');
-    const badges = card.querySelector('.lineup-card__badges');
-    const next = card.querySelector('.lineup-card__next');
+    const titleEl = card.querySelector('.lineup-card__title');
+    const metaEl = card.querySelector('.lineup-card__meta');
+    const assignedEl = card.querySelector('.lineup-card__assigned');
+    const nextEl = card.querySelector('.lineup-card__next');
 
-    const seasonCount = (bundle?.seasons?.length ?? Number(entry.seasonCount || 0) ?? 0);
     const assignedUsers = getAssignedUsers(entry);
-    const carrier = bundle?.mainChannel || entry.network || 'carrier unknown';
-    const streamer = (bundle?.streaming || entry.streaming || '').split(',')[0].trim();
+    const status = inferLineupStatus(entry, bundle);
 
-    title.textContent = bundle?.show?.name || entry.name;
-    meta.textContent = `${seasonCount || '—'} season${seasonCount === 1 ? '' : 's'} · ${carrier}`;
-
-    if (streamer && (!carrier || normalizeTitle(streamer) !== normalizeTitle(carrier))) badges.appendChild(makeBadge(streamer, 'stream'));
-    if (assignedUsers.length) assignedUsers.forEach((user) => badges.appendChild(makeBadge(user.name, 'user-badge', user.color)));
-    else if (state.users.length) badges.appendChild(makeBadge('Unassigned', 'unassigned'));
-    if (bundle?.nextEpisode) badges.appendChild(makeBadge('Scheduled', 'upcoming'));
-
-    next.textContent = bundle?.nextEpisode ? `Next scheduled: ${formatNextEpisode(bundle.nextEpisode)}` : (bundle ? 'No known scheduled episode date right now.' : 'Details unavailable right now. Try Refresh.');
+    titleEl.textContent = bundle?.show?.name || entry.name;
+    metaEl.innerHTML = `<strong>Details:</strong> ${escapeHtml(buildLineupMeta(entry, bundle) || 'Details still loading')}`;
+    assignedEl.innerHTML = `<strong>Users:</strong> ${escapeHtml(assignedUsers.length ? assignedUsers.map((user) => user.name).join(', ') : (state.users.length ? 'Unassigned' : 'Shared lineup'))}`;
+    nextEl.innerHTML = `<strong>Status:</strong> ${escapeHtml(status.text)}`;
+    if (status.variant) card.classList.add(`lineup-card--${status.variant}`);
 
     card.querySelector('.lineup-card__open').addEventListener('click', () => {
       state.selectedId = entry.id;
@@ -1216,11 +1282,6 @@ async function renderLineup() {
       activateMobilePane('detail');
     });
     card.querySelector('.lineup-card__assign').addEventListener('click', () => openAssignModal(entry.id));
-    card.querySelector('.lineup-card__refresh').addEventListener('click', async () => {
-      await hydrateShow(entry.id, { force: true });
-      render();
-      toast(`Refreshed ${bundle?.show?.name || entry.name}.`);
-    });
     card.querySelector('.lineup-card__delete').addEventListener('click', () => removeShow(entry.id));
 
     if (state.selectedId === entry.id) card.style.outline = '2px solid rgba(124,156,255,.55)';

@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.6.2';
+const APP_VERSION = 'v4.6.1';
 const BUILD_DATE = '2026-03-22';
 let lineupHydrationToken = 0;
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
@@ -25,7 +25,6 @@ const state = {
   upcomingFilter: 'all',
   cache: {},
   mobilePane: 'lineup',
-  lineupExpanded: {},
   sync: {
     mode: 'local',
     lastSyncAt: '',
@@ -310,7 +309,6 @@ function mergeLoadedState(parsed) {
   state.activeUserFilter = parsed.activeUserFilter || state.activeUserFilter;
   state.upcomingFilter = parsed.upcomingFilter || state.upcomingFilter;
   state.mobilePane = parsed.mobilePane || state.mobilePane;
-  if (parsed.lineupExpanded && typeof parsed.lineupExpanded === 'object') state.lineupExpanded = parsed.lineupExpanded;
   if (parsed.sync) state.sync = { ...state.sync, ...parsed.sync };
 }
 
@@ -332,7 +330,6 @@ function normalizeState() {
   if (!state.selectedId || !state.shows.some((show) => show.id === state.selectedId)) {
     state.selectedId = state.shows[0]?.id || null;
   }
-  state.lineupExpanded = Object.fromEntries(Object.entries(state.lineupExpanded || {}).filter(([id]) => state.shows.some((show) => show.id === id)));
 }
 
 function dedupeUsers(users = []) {
@@ -422,7 +419,6 @@ function persistState() {
     activeUserFilter: state.activeUserFilter,
     upcomingFilter: state.upcomingFilter,
     mobilePane: state.mobilePane,
-    lineupExpanded: state.lineupExpanded,
     sync: state.sync,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -1210,30 +1206,6 @@ function inferLineupStatus(entry, bundle) {
     : { variant: '', text: 'Loading details…' };
 }
 
-function summarizeLineupStatus(status = {}) {
-  const text = String(status.text || '').trim();
-  if (!text) return 'Status unknown';
-  if (text.startsWith('Next scheduled:')) return text.replace('Next scheduled:', 'Scheduled').trim();
-  if (text.includes('Likely ended')) return 'Likely ended';
-  if (text.includes('Series ended')) return 'Ended';
-  if (text.includes('Series canceled')) return 'Canceled';
-  if (text.includes('New season expected')) return 'Returning';
-  if (text.includes('Loading details')) return 'Loading';
-  if (text.includes('No known scheduled')) return 'No date set';
-  return text.replace(/[.]$/, '');
-}
-
-function setLineupExpanded(showId, expanded) {
-  state.lineupExpanded = state.lineupExpanded || {};
-  state.lineupExpanded[showId] = Boolean(expanded);
-  persistState();
-  renderLineup();
-}
-
-function buildLineupToggleLabel(expanded) {
-  return expanded ? '−' : '+';
-}
-
 function buildLineupMeta(entry, bundle) {
   const seasonCount = (bundle?.seasons?.length ?? Number(entry.seasonCount || 0) ?? 0);
   const seasonText = `${seasonCount || '—'} season${seasonCount === 1 ? '' : 's'}`;
@@ -1314,22 +1286,14 @@ function renderLineup() {
         const metaEl = card.querySelector('.lineup-card__meta');
         const assignedEl = card.querySelector('.lineup-card__assigned');
         const nextEl = card.querySelector('.lineup-card__next');
-        const statusChipEl = card.querySelector('.lineup-card__status-chip');
-        const toggleBtn = card.querySelector('.lineup-card__toggle');
 
         const assignedUsers = getAssignedUsers(entry);
         const status = inferLineupStatus(entry, bundle);
-        const expanded = Boolean(state.lineupExpanded?.[entry.id]);
 
         titleEl.textContent = bundle?.show?.name || entry.name || 'Untitled show';
         metaEl.innerHTML = `<strong>Details:</strong> ${escapeHtml(buildLineupMeta(entry, bundle) || 'Details still loading')}`;
         assignedEl.innerHTML = `<strong>Users:</strong> ${escapeHtml(assignedUsers.length ? assignedUsers.map((user) => user.name).join(', ') : (state.users.length ? 'Unassigned' : 'Shared lineup'))}`;
         nextEl.innerHTML = `<strong>Status:</strong> ${escapeHtml(status.text)}`;
-        statusChipEl.textContent = summarizeLineupStatus(status);
-        toggleBtn.textContent = buildLineupToggleLabel(expanded);
-        toggleBtn.setAttribute('aria-label', expanded ? 'Collapse listing' : 'Expand listing');
-        card.classList.toggle('lineup-card--expanded', expanded);
-        card.classList.toggle('lineup-card--collapsed', !expanded);
         if (status.variant) card.classList.add(`lineup-card--${status.variant}`);
 
         card.querySelector('.lineup-card__open').addEventListener('click', () => {
@@ -1340,7 +1304,6 @@ function renderLineup() {
         });
         card.querySelector('.lineup-card__assign').addEventListener('click', () => openAssignModal(entry.id));
         card.querySelector('.lineup-card__delete').addEventListener('click', () => removeShow(entry.id));
-        toggleBtn.addEventListener('click', () => setLineupExpanded(entry.id, !expanded));
 
         if (state.selectedId === entry.id) card.style.outline = '2px solid rgba(124,156,255,.55)';
         els.lineupGrid.appendChild(card);

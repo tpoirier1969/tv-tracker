@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.5.2';
+const APP_VERSION = 'v4.5.3';
 const BUILD_DATE = '2026-03-22';
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
 const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings-v4-2';
@@ -35,6 +35,14 @@ const els = {};
 let toastTimer = null;
 let syncInFlight = false;
 let activeModal = null;
+
+window.forceCloseTvTrackerModals = function forceCloseTvTrackerModals() {
+  closeAddShowModal();
+  closeSettings();
+  closeUsersModal();
+  closeAssignModal();
+  closeChooser();
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   init().catch((err) => {
@@ -176,14 +184,46 @@ function bindEvents() {
 
   document.addEventListener('keydown', onGlobalKeydown);
   document.addEventListener('click', onDocumentClick);
-  document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
-    backdrop.addEventListener('click', (event) => {
+  bindDirectModalControls();
+}
+
+function bindDirectModalControls() {
+  document.querySelectorAll('[data-close-add-show]').forEach((el) => {
+    el.addEventListener('click', (event) => {
       event.preventDefault();
-      closeTopModal();
+      event.stopPropagation();
+      closeAddShowModal();
+    });
+  });
+  document.querySelectorAll('[data-close-settings]').forEach((el) => {
+    el.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSettings();
+    });
+  });
+  document.querySelectorAll('[data-close-users]').forEach((el) => {
+    el.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeUsersModal();
+    });
+  });
+  document.querySelectorAll('[data-close-assign]').forEach((el) => {
+    el.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeAssignModal();
+    });
+  });
+  document.querySelectorAll('[data-close-modal]').forEach((el) => {
+    el.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeChooser();
     });
   });
 }
-
 
 function onDocumentClick(event) {
   const closeTrigger = event.target.closest('[data-close-modal], [data-close-settings], [data-close-users], [data-close-assign], [data-close-add-show]');

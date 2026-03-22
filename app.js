@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.5.0';
+const APP_VERSION = 'v4.5.2';
 const BUILD_DATE = '2026-03-22';
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
 const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings-v4-2';
@@ -112,6 +112,38 @@ function cacheElements() {
   els.mobileTabs = [...document.querySelectorAll('[data-mobile-pane-button]')];
   els.versionFlag = document.getElementById('versionFlag');
   els.footerVersion = document.getElementById('footerVersion');
+}
+
+
+function exportConfigFile() {
+  if (typeof window.buildRuntimeConfigSource !== 'function') {
+    toast('config.js export is unavailable in this build. Keep using your existing config.js.', 3200);
+    return;
+  }
+  const source = window.buildRuntimeConfigSource();
+  const blob = new Blob([source], { type: 'application/javascript;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'config.js';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  toast('config.js exported.', 1800);
+}
+
+function copyConfigToClipboard() {
+  if (typeof window.buildRuntimeConfigSource !== 'function') {
+    toast('config.js copy is unavailable in this build.', 2800);
+    return;
+  }
+  const source = window.buildRuntimeConfigSource();
+  navigator.clipboard.writeText(source)
+    .then(() => toast('config.js copied to clipboard.', 1800))
+    .catch((err) => {
+      console.error('Copy config failed:', err);
+      toast('Could not copy config.js.', 2400);
+    });
 }
 
 function bindEvents() {

@@ -19,7 +19,10 @@
         <button class="chip" data-mobile-pane-button="detail">Details</button>
       </nav>
       <div>
-        <p class="eyebrow">Personal tracker</p>
+        <div class="title-row">
+          <p class="eyebrow">Personal tracker</p>
+          <span id="versionFlag" class="version-flag">v4.1.0</span>
+        </div>
         <h1>TV Lineup Tracker</h1>
         <p class="subhead">A cleaner way to track shows, seasons, streaming platforms, and the next episodes that are about to drop.</p>
       </div>
@@ -30,6 +33,12 @@
         <input id="importFile" type="file" accept="application/json" hidden />
       </div>
     </header>
+
+    <section class="stats-strip" aria-label="Quick stats">
+      <article class="stat-chip"><span class="label">Tracked shows</span><strong id="trackedShowsStat">0</strong></article>
+      <article class="stat-chip"><span class="label">Drops this week</span><strong id="weeklyDropsStat">0</strong></article>
+      <article class="stat-chip"><span class="label">Drops today</span><strong id="todayDropsStat">0</strong></article>
+    </section>
 
     <section class="hero-grid" data-mobile-pane="add">
       <article class="panel add-panel">
@@ -47,16 +56,16 @@
 
       <article class="panel weekly-panel" data-mobile-pane="upcoming">
         <div class="panel-heading">
-          <h2>Upcoming episodes</h2>
+          <h2>This week’s drops</h2>
           <span id="upcomingCount" class="pill neutral">0 tracked</span>
         </div>
         <div class="upcoming-toolbar">
-          <button class="chip active" data-upcoming-filter="7">Next 7 days</button>
+          <button class="chip active" data-upcoming-filter="7">This week</button>
           <button class="chip" data-upcoming-filter="30">Next 30 days</button>
-          <button class="chip" data-upcoming-filter="all">All known dates</button>
+          <button class="chip" data-upcoming-filter="all">All scheduled</button>
         </div>
         <div id="upcomingList" class="upcoming-list empty-state-box">
-          <p>Add a show and its next scheduled episode will show up here.</p>
+          <p>Add a show and its next scheduled episode lands here with the main place to stream it.</p>
         </div>
       </article>
     </section>
@@ -163,5 +172,6 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="app.js" defer></script>
+  <footer class="app-footer"><span id="footerVersion">v4.1.0</span> · mobile-first lineup dashboard</footer>
 </body>
 </html>

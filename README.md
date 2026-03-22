@@ -1,3 +1,5 @@
+# TV Lineup Tracker v4.1.0
+
 # TV Lineup Tracker
 
 This version is rebuilt to work even when TVMaze is flaky or unreachable.
@@ -19,3 +21,7 @@ On phones, the app now uses a 4-button section switcher at the top:
 - Details
 
 That cuts down the endless vertical scrolling.
+
+
+## Persistence update
+The TMDb key, watch region, and cast-count settings now persist in a stable browser storage key so you should not need to re-enter them every build on the same site/browser.

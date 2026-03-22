@@ -1,4 +1,8 @@
-const STORAGE_KEY = 'tv-lineup-tracker-state-v2';
+const APP_VERSION = 'v4.1.0';
+const BUILD_DATE = '2026-03-21';
+const STORAGE_KEY = 'tv-lineup-tracker-state';
+const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings';
+const LEGACY_STATE_KEYS = ['tv-lineup-tracker-state-v4', 'tv-lineup-tracker-state-v3', 'tv-lineup-tracker-state'];
 const FETCH_TIMEOUT_MS = 9000;
 
 const state = {
@@ -23,9 +27,13 @@ function init() {
   cacheElements();
   loadState();
   bindEvents();
+  if (els.versionFlag) els.versionFlag.textContent = `${APP_VERSION} · ${BUILD_DATE}`;
+  if (els.footerVersion) els.footerVersion.textContent = `${APP_VERSION} · ${BUILD_DATE}`;
   activateMobilePane(state.mobilePane || 'upcoming');
   render();
+  if (els.showSearch) els.showSearch.focus();
 }
+
 
 function cacheElements() {
   els.addShowForm = document.getElementById('addShowForm');
@@ -48,6 +56,11 @@ function cacheElements() {
   els.importFile = document.getElementById('importFile');
   els.toast = document.getElementById('toast');
   els.mobileTabs = [...document.querySelectorAll('[data-mobile-pane-button]')];
+  els.versionFlag = document.getElementById('versionFlag');
+  els.footerVersion = document.getElementById('footerVersion');
+  els.trackedShowsStat = document.getElementById('trackedShowsStat');
+  els.weeklyDropsStat = document.getElementById('weeklyDropsStat');
+  els.todayDropsStat = document.getElementById('todayDropsStat');
 }
 
 function bindEvents() {
@@ -72,20 +85,31 @@ function bindEvents() {
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed?.settings) state.settings = { ...state.settings, ...parsed.settings };
-    if (Array.isArray(parsed?.shows)) {
-      state.shows = parsed.shows.map((show) => ({
-        watched: {},
-        ...show,
-        id: show.id || (show.tmdbId ? `tmdb:${show.tmdbId}` : show.tvmazeId ? `tvmaze:${show.tvmazeId}` : crypto.randomUUID()),
-        source: show.source || (show.tmdbId ? 'tmdb' : 'tvmaze'),
-      }));
+    const raw = getFirstAvailableStorage_(LEGACY_STATE_KEYS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.settings) state.settings = { ...state.settings, ...parsed.settings };
+      if (Array.isArray(parsed?.shows)) {
+        state.shows = parsed.shows.map((show) => ({
+          watched: {},
+          ...show,
+          id: show.id || (show.tmdbId ? `tmdb:${show.tmdbId}` : show.tvmazeId ? `tvmaze:${show.tvmazeId}` : crypto.randomUUID()),
+          source: show.source || (show.tmdbId ? 'tmdb' : 'tvmaze'),
+        }));
+      }
+      state.selectedId = parsed?.selectedId || state.shows[0]?.id || null;
+      state.mobilePane = parsed?.mobilePane || 'upcoming';
     }
-    state.selectedId = parsed?.selectedId || state.shows[0]?.id || null;
-    state.mobilePane = parsed?.mobilePane || 'upcoming';
+
+    const settingsRaw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (settingsRaw) {
+      const savedSettings = JSON.parse(settingsRaw);
+      state.settings = { ...state.settings, ...savedSettings };
+    }
+
+    if (state.settings.tmdbApiKey) {
+      state.settings.tmdbApiKey = String(state.settings.tmdbApiKey).trim();
+    }
   } catch (err) {
     console.warn('Could not load saved state', err);
   }
@@ -98,6 +122,19 @@ function persistState() {
     selectedId: state.selectedId,
     mobilePane: state.mobilePane,
   }));
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+    tmdbApiKey: state.settings.tmdbApiKey,
+    watchRegion: state.settings.watchRegion,
+    castCount: state.settings.castCount,
+  }));
+}
+
+function getFirstAvailableStorage_(keys) {
+  for (const key of keys) {
+    const raw = localStorage.getItem(key);
+    if (raw) return raw;
+  }
+  return null;
 }
 
 function activateMobilePane(name) {
@@ -111,6 +148,25 @@ function render() {
   renderLineup();
   renderSelectedDetail();
   renderUpcoming();
+  renderStats();
+}
+
+function renderStats() {
+  const today = startOfToday();
+  let weekly = 0;
+  let todayCount = 0;
+  for (const show of state.shows) {
+    const bundle = state.cache[`${show.id}|${state.settings.watchRegion}|${state.settings.castCount}|${Boolean(state.settings.tmdbApiKey)}`];
+    const airdate = bundle?.nextEpisode?.airdate;
+    if (!airdate) continue;
+    const dt = new Date(`${airdate}T00:00:00`);
+    const delta = daysBetween(today, dt);
+    if (delta >= 0 && delta <= 7) weekly += 1;
+    if (delta === 0) todayCount += 1;
+  }
+  if (els.trackedShowsStat) els.trackedShowsStat.textContent = String(state.shows.length);
+  if (els.weeklyDropsStat) els.weeklyDropsStat.textContent = String(weekly);
+  if (els.todayDropsStat) els.todayDropsStat.textContent = String(todayCount);
 }
 
 async function onAddShowSubmit(event) {
@@ -236,8 +292,10 @@ function saveSettings(event) {
   persistState();
   closeSettings();
   render();
+  toast('Settings saved locally for future builds on this browser.');
   refreshAllShows();
 }
+
 
 async function addShowToLineup(show) {
   const entry = show.source === 'tmdb'
@@ -632,6 +690,9 @@ async function renderSelectedDetail() {
     row.querySelector('.season-platform').textContent = seasonRow.platform || '—';
     row.querySelector('.season-next').textContent = seasonRow.nextEpisode || '—';
 
+    const labels = ['Season','Episodes','Release','Description','Starring','Streaming','Next episode','Watched?'];
+    [...row.children].forEach((cell, index) => cell.setAttribute('data-label', labels[index] || ''));
+
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = Boolean(entry?.watched?.[seasonRow.season]);
@@ -713,7 +774,7 @@ function exportState() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'tv-lineup-export.json';
+  link.download = `tv-lineup-export-${APP_VERSION}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }

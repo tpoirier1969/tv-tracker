@@ -20,13 +20,16 @@
       </nav>
       <div>
         <div class="title-row">
-          <p class="eyebrow">Personal tracker</p>
-          <span id="versionFlag" class="version-flag">v4.1.0</span>
+          <p class="eyebrow">Shared tracker</p>
+          <span id="versionFlag" class="version-flag">v4.2.0</span>
         </div>
         <h1>TV Lineup Tracker</h1>
-        <p class="subhead">A cleaner way to track shows, seasons, streaming platforms, and the next episodes that are about to drop.</p>
+        <p class="subhead">Track shows, assign them to any users you set up, and sync the lineup across devices with Supabase. Upcoming dates are treated as best-known schedule dates, not guaranteed U.S. streaming availability.</p>
       </div>
       <div class="topbar-actions">
+        <span id="syncStatusPill" class="pill neutral">Local only</span>
+        <button id="manageUsersBtn" class="ghost-btn">Users</button>
+        <button id="syncNowBtn" class="ghost-btn">Sync now</button>
         <button id="settingsBtn" class="ghost-btn">Settings</button>
         <button id="exportBtn" class="ghost-btn">Export</button>
         <label class="ghost-btn file-label" for="importFile">Import</label>
@@ -35,28 +38,37 @@
     </header>
 
     <section class="stats-strip" aria-label="Quick stats">
-      <article class="stat-chip"><span class="label">Tracked shows</span><strong id="trackedShowsStat">0</strong></article>
-      <article class="stat-chip"><span class="label">Drops this week</span><strong id="weeklyDropsStat">0</strong></article>
-      <article class="stat-chip"><span class="label">Drops today</span><strong id="todayDropsStat">0</strong></article>
+      <article class="stat-chip"><span class="label">Visible shows</span><strong id="trackedShowsStat">0</strong></article>
+      <article class="stat-chip"><span class="label">Scheduled this week</span><strong id="weeklyDropsStat">0</strong></article>
+      <article class="stat-chip"><span class="label">Scheduled today</span><strong id="todayDropsStat">0</strong></article>
+      <article class="stat-chip"><span class="label">Viewing as</span><strong id="activeUserStat">All users</strong></article>
+    </section>
+
+    <section class="panel user-filter-panel" aria-label="User filters">
+      <div class="panel-heading compact-heading">
+        <h2>User filter</h2>
+        <p class="panel-kicker">Use this to switch the lineup between everybody or a specific person.</p>
+      </div>
+      <div id="userFilterChips" class="user-filter-chips"></div>
     </section>
 
     <section class="hero-grid" data-mobile-pane="add">
       <article class="panel add-panel">
         <div class="panel-heading">
           <h2>Add a show</h2>
-          <span class="pill">TVMaze + TMDb</span>
+          <span class="pill">TMDb + Supabase ready</span>
         </div>
         <form id="addShowForm" class="add-form">
           <label for="showSearch" class="sr-only">Search title</label>
           <input id="showSearch" type="text" placeholder="Type a series title…" autocomplete="off" autocapitalize="words" spellcheck="false" />
           <button type="submit" class="primary-btn">Add to lineup</button>
         </form>
-        <p class="microcopy">Misspellings and duplicate titles get a chooser instead of a tantrum.</p>
+        <p class="microcopy">If a specific user filter is active, a new show is assigned there by default. Otherwise it lands in the shared pile until you assign it.</p>
       </article>
 
       <article class="panel weekly-panel" data-mobile-pane="upcoming">
         <div class="panel-heading">
-          <h2>This week’s drops</h2>
+          <h2>Upcoming schedule</h2>
           <span id="upcomingCount" class="pill neutral">0 tracked</span>
         </div>
         <div class="upcoming-toolbar">
@@ -65,7 +77,7 @@
           <button class="chip" data-upcoming-filter="all">All scheduled</button>
         </div>
         <div id="upcomingList" class="upcoming-list empty-state-box">
-          <p>Add a show and its next scheduled episode lands here with the main place to stream it.</p>
+          <p>Add a show and its next known scheduled episode lands here with the best-known network or service.</p>
         </div>
       </article>
     </section>
@@ -73,23 +85,26 @@
     <main class="main-grid">
       <section class="panel lineup-panel" data-mobile-pane="lineup">
         <div class="panel-heading">
-          <h2>My lineup</h2>
+          <div>
+            <h2>Lineup</h2>
+            <p id="lineupScopeLabel" class="panel-kicker">Showing all saved shows.</p>
+          </div>
           <div class="lineup-actions">
             <button id="refreshAllBtn" class="ghost-btn small">Refresh all</button>
           </div>
         </div>
         <div id="lineupGrid" class="lineup-grid empty-state-box">
-          <p>No shows saved yet. Add one above and this starts looking a lot less like a spreadsheet.</p>
+          <p>No shows saved yet. Add one above and this stops acting like a spreadsheet.</p>
         </div>
       </section>
 
-      <aside class="panel detail-panel" data-mobile-pane="detail">
-        <div id="detailEmpty" class="detail-empty">
+      <section class="panel detail-panel" data-mobile-pane="detail">
+        <div id="detailEmpty" class="empty-state-box sticky-empty">
           <h2>Show details</h2>
-          <p>Select a show from the lineup to see seasons, cast, platforms, and upcoming episode info.</p>
+          <p>Pick something from the lineup and all the season details land here.</p>
         </div>
         <div id="detailView" class="detail-view hidden"></div>
-      </aside>
+      </section>
     </main>
   </div>
 
@@ -125,13 +140,68 @@
           Top-billed actors to show
           <input id="castCountInput" type="number" min="1" max="10" step="1" />
         </label>
+        <hr class="settings-rule" />
+        <label>
+          Supabase project URL
+          <input id="supabaseUrlInput" type="url" placeholder="https://YOURPROJECT.supabase.co" autocomplete="off" />
+        </label>
+        <label>
+          Supabase publishable / anon key
+          <input id="supabaseKeyInput" type="password" placeholder="Paste your Supabase browser key" autocomplete="off" />
+        </label>
+        <label>
+          Shared workspace slug
+          <input id="workspaceSlugInput" type="text" placeholder="cabin-tv-household" autocomplete="off" spellcheck="false" />
+        </label>
         <div class="settings-actions">
           <button type="submit" class="primary-btn">Save settings</button>
         </div>
       </form>
       <div class="settings-note">
-        <p><strong>Where to find your TMDb key:</strong> open your existing Google Sheet, then go to <strong>Extensions → Apps Script → Project Settings → Script Properties</strong> and copy the value for <strong>TMDB_API_KEY</strong>.</p>
+        <p><strong>TMDb key:</strong> keep using the key you already had.</p>
+        <p><strong>Supabase:</strong> paste the project URL plus a browser-safe publishable or legacy anon key, then use the same workspace slug on every device that should share this tracker.</p>
       </div>
+    </div>
+  </div>
+
+  <div id="usersModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-users></div>
+    <div class="modal-card settings-card">
+      <div class="panel-heading">
+        <h2>Users</h2>
+        <button class="icon-btn" data-close-users aria-label="Close">×</button>
+      </div>
+      <form id="userForm" class="settings-form inline-form">
+        <label>
+          Add a user
+          <input id="userNameInput" type="text" placeholder="Name" autocomplete="off" />
+        </label>
+        <div class="settings-actions">
+          <button type="submit" class="primary-btn">Add user</button>
+        </div>
+      </form>
+      <div id="usersList" class="users-list empty-state-box">
+        <p>No users yet. Add one and start assigning shows.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="assignModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-assign></div>
+    <div class="modal-card settings-card">
+      <div class="panel-heading">
+        <h2>Assign users</h2>
+        <button class="icon-btn" data-close-assign aria-label="Close">×</button>
+      </div>
+      <p id="assignModalTitle" class="modal-copy">Choose who this show belongs to.</p>
+      <form id="assignForm" class="settings-form">
+        <div id="assignChecklist" class="assign-checklist empty-state-box">
+          <p>Add at least one user first.</p>
+        </div>
+        <div class="settings-actions">
+          <button type="submit" class="primary-btn">Save assignment</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -150,6 +220,7 @@
         <p class="lineup-card__next"></p>
         <div class="lineup-card__actions">
           <button class="ghost-btn small lineup-card__open">Open</button>
+          <button class="ghost-btn small lineup-card__assign">Assign</button>
           <button class="ghost-btn small lineup-card__refresh">Refresh</button>
         </div>
       </div>
@@ -172,6 +243,6 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="app.js" defer></script>
-  <footer class="app-footer"><span id="footerVersion">v4.1.0</span> · mobile-first lineup dashboard</footer>
+  <footer class="app-footer"><span id="footerVersion">v4.2.0</span> · shared lineup dashboard</footer>
 </body>
 </html>

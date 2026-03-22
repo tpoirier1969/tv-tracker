@@ -703,3 +703,131 @@ img { display: block; max-width: 100%; }
   .stats-strip { grid-template-columns: 1fr 1fr; }
   .lineup-panel, .detail-panel, .weekly-panel, .add-panel { margin-bottom: 10px; }
 }
+
+/* v4.3.0 ultra-compact lineup + config tools */
+.stat-chip--button {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+}
+.stat-chip--button:hover {
+  transform: translateY(-1px);
+}
+.sync-error-detail {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,123,145,.28);
+  background: rgba(255,123,145,.08);
+  color: #ffdbe1;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.lineup-card {
+  display: block;
+  padding: 8px 10px;
+}
+.lineup-card__body {
+  min-width: 0;
+}
+.lineup-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lineup-card__title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.lineup-card__title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.1;
+}
+.lineup-card__inline-actions,
+.lineup-card__utility-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.lineup-card__info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.lineup-card__meta,
+.lineup-card__next {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.25;
+}
+.lineup-card__badges {
+  margin: 0;
+  gap: 5px;
+}
+.lineup-card .badge {
+  padding: 2px 6px;
+  font-size: 10px;
+}
+.lineup-card .ghost-btn.small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.lineup-card .icon-btn {
+  width: 26px;
+  height: 26px;
+}
+
+@media (max-width: 980px) {
+  .lineup-card__refresh { display: none; }
+}
+
+@media (max-width: 760px) {
+  .stats-strip { grid-template-columns: 1fr; }
+  .stat-chip {
+    padding: 7px 9px;
+    border-radius: 12px;
+  }
+  .stat-chip .label {
+    font-size: 9px;
+  }
+  .stat-chip strong {
+    font-size: 16px;
+  }
+  .lineup-card {
+    padding: 7px 8px;
+  }
+  .lineup-card__title-row {
+    gap: 6px;
+  }
+  .lineup-card__title {
+    font-size: 14px;
+  }
+  .lineup-card__title-group {
+    gap: 6px;
+  }
+  .lineup-card__inline-actions,
+  .lineup-card__utility-actions {
+    gap: 4px;
+  }
+  .lineup-card .ghost-btn.small {
+    padding: 3px 7px;
+    font-size: 10px;
+  }
+  .lineup-card__meta,
+  .lineup-card__next {
+    font-size: 11px;
+  }
+  .lineup-card .badge {
+    padding: 2px 5px;
+    font-size: 9px;
+  }
+}

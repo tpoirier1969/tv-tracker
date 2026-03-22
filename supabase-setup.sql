@@ -1,4 +1,4 @@
--- TV Lineup Tracker Supabase setup (v4.2.1)
+-- TV Lineup Tracker Supabase setup (v4.3.0)
 -- Run this once in Supabase SQL Editor before entering your project URL/key in the app.
 
 create extension if not exists pgcrypto;

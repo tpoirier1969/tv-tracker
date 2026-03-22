@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.2.1';
+const APP_VERSION = 'v4.3.0';
 const BUILD_DATE = '2026-03-22';
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';
 const SETTINGS_STORAGE_KEY = 'tv-lineup-tracker-settings-v4-2';
@@ -21,7 +21,7 @@ const state = {
   selectedId: null,
   assigningShowId: null,
   activeUserFilter: 'all',
-  upcomingFilter: '7',
+  upcomingFilter: '21',
   cache: {},
   mobilePane: 'lineup',
   sync: {
@@ -96,14 +96,19 @@ function cacheElements() {
   els.syncStatusPill = document.getElementById('syncStatusPill');
   els.exportBtn = document.getElementById('exportBtn');
   els.importFile = document.getElementById('importFile');
+  els.exportConfigBtn = document.getElementById('exportConfigBtn');
+  els.copyConfigBtn = document.getElementById('copyConfigBtn');
+  els.settingsExportConfigBtn = document.getElementById('settingsExportConfigBtn');
+  els.settingsCopyConfigBtn = document.getElementById('settingsCopyConfigBtn');
+  els.threeWeekStatBtn = document.getElementById('threeWeekStatBtn');
+  els.syncErrorDetail = document.getElementById('syncErrorDetail');
   els.toast = document.getElementById('toast');
   els.mobileTabs = [...document.querySelectorAll('[data-mobile-pane-button]')];
   els.versionFlag = document.getElementById('versionFlag');
   els.footerVersion = document.getElementById('footerVersion');
   els.trackedShowsStat = document.getElementById('trackedShowsStat');
   els.weeklyDropsStat = document.getElementById('weeklyDropsStat');
-  els.todayDropsStat = document.getElementById('todayDropsStat');
-  els.activeUserStat = document.getElementById('activeUserStat');
+    els.activeUserStat = document.getElementById('activeUserStat');
 }
 
 function bindEvents() {
@@ -115,7 +120,12 @@ function bindEvents() {
   els.userForm.addEventListener('submit', onAddUserSubmit);
   els.assignForm.addEventListener('submit', saveAssignment);
   els.exportBtn.addEventListener('click', exportState);
+  els.exportConfigBtn?.addEventListener('click', exportConfigFile);
+  els.copyConfigBtn?.addEventListener('click', copyConfigToClipboard);
+  els.settingsExportConfigBtn?.addEventListener('click', exportConfigFile);
+  els.settingsCopyConfigBtn?.addEventListener('click', copyConfigToClipboard);
   els.importFile.addEventListener('change', importStateFile);
+  els.threeWeekStatBtn?.addEventListener('click', openThreeWeekSchedule);
   els.syncNowBtn.addEventListener('click', () => syncCloudState({ initial: false, manual: true }));
 
   document.querySelectorAll('[data-close-modal]').forEach((el) => el.addEventListener('click', closeChooser));
@@ -177,8 +187,8 @@ function normalizeState() {
   state.settings.tmdbApiKey = String(state.settings.tmdbApiKey || '').trim();
   state.settings.watchRegion = String(state.settings.watchRegion || 'US').trim().toUpperCase() || 'US';
   state.settings.castCount = Math.max(1, Math.min(10, Number(state.settings.castCount || 4)));
-  state.settings.supabaseUrl = String(state.settings.supabaseUrl || '').trim().replace(/\/+$/, '');
-  state.settings.supabaseKey = String(state.settings.supabaseKey || '').trim();
+  state.settings.supabaseUrl = normalizeSupabaseUrl(state.settings.supabaseUrl || '');
+  state.settings.supabaseKey = normalizeApiKey(state.settings.supabaseKey || '');
   state.settings.workspaceSlug = normalizeWorkspaceSlug(state.settings.workspaceSlug || '');
 
   state.users = (state.users || []).map((user, index) => normalizeUser(user, index)).sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
@@ -283,19 +293,16 @@ function renderStats() {
   const today = startOfToday();
   const visibleShows = getVisibleShows();
   let weekly = 0;
-  let todayCount = 0;
   for (const show of visibleShows) {
     const bundle = getCachedBundleForShow(show);
     const airdate = bundle?.nextEpisode?.airdate;
     if (!airdate) continue;
     const dt = new Date(`${airdate}T00:00:00`);
     const delta = daysBetween(today, dt);
-    if (delta >= 0 && delta <= 7) weekly += 1;
-    if (delta === 0) todayCount += 1;
+    if (delta >= 0 && delta <= 21) weekly += 1;
   }
   if (els.trackedShowsStat) els.trackedShowsStat.textContent = String(visibleShows.length);
   if (els.weeklyDropsStat) els.weeklyDropsStat.textContent = String(weekly);
-  if (els.todayDropsStat) els.todayDropsStat.textContent = String(todayCount);
   if (els.activeUserStat) els.activeUserStat.textContent = getActiveUserLabel();
 }
 
@@ -540,8 +547,8 @@ async function saveSettings(event) {
   state.settings.tmdbApiKey = String(els.tmdbKeyInput.value || '').trim();
   state.settings.watchRegion = (String(els.watchRegionInput.value || 'US').trim() || 'US').toUpperCase();
   state.settings.castCount = Math.max(1, Math.min(10, Number(els.castCountInput.value || 4)));
-  state.settings.supabaseUrl = String(els.supabaseUrlInput.value || '').trim().replace(/\/+$/, '');
-  state.settings.supabaseKey = String(els.supabaseKeyInput.value || '').trim();
+  state.settings.supabaseUrl = normalizeSupabaseUrl(String(els.supabaseUrlInput.value || ''));
+  state.settings.supabaseKey = normalizeApiKey(String(els.supabaseKeyInput.value || ''));
   state.settings.workspaceSlug = normalizeWorkspaceSlug(els.workspaceSlugInput.value || '');
   state.cache = {};
   persistState();
@@ -984,30 +991,29 @@ async function renderLineup() {
     });
     if (!bundle) continue;
     const card = document.getElementById('lineupCardTemplate').content.firstElementChild.cloneNode(true);
-    const image = card.querySelector('.lineup-card__image');
     const title = card.querySelector('.lineup-card__title');
     const meta = card.querySelector('.lineup-card__meta');
     const badges = card.querySelector('.lineup-card__badges');
     const next = card.querySelector('.lineup-card__next');
 
-    image.src = bundle.show?.image?.medium || 'https://placehold.co/300x450/11192f/eef4ff?text=TV';
-    image.alt = `${bundle.show?.name || entry.name} poster`;
     title.textContent = bundle.show?.name || entry.name;
     const seasonCount = bundle.seasons.length;
     const assignedUsers = getAssignedUsers(entry);
-    meta.textContent = `${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${bundle.mainChannel || 'Channel unknown'}`;
+    const carrier = bundle.mainChannel || 'carrier unknown';
+    const streamer = bundle.streaming?.split(',')[0] || '';
+    meta.textContent = `${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${carrier}`;
 
-    if (bundle.streaming) badges.appendChild(makeBadge(bundle.streaming.split(',')[0], 'stream'));
-    if (bundle.nextEpisode) badges.appendChild(makeBadge(`S${bundle.nextEpisode.season ?? '?'}E${bundle.nextEpisode.number ?? '?'}`, 'upcoming'));
-    if (assignedUsers.length === 1) {
-      badges.appendChild(makeBadge(assignedUsers[0].name, 'user-badge', assignedUsers[0].color));
-    } else if (assignedUsers.length > 1) {
-      badges.appendChild(makeBadge(`${assignedUsers.length} users`, 'user-badge'));
+    if (streamer && (!bundle.mainChannel || normalizeTitle(streamer) !== normalizeTitle(bundle.mainChannel))) {
+      badges.appendChild(makeBadge(streamer, 'stream'));
+    }
+    if (assignedUsers.length) {
+      assignedUsers.forEach((user) => badges.appendChild(makeBadge(user.name, 'user-badge', user.color)));
     } else if (state.users.length) {
       badges.appendChild(makeBadge('Unassigned', 'unassigned'));
     }
+    if (bundle.nextEpisode) badges.appendChild(makeBadge('Scheduled', 'upcoming'));
 
-    next.textContent = bundle.nextEpisode ? `Next: ${formatNextEpisode(bundle.nextEpisode)}` : 'Next: no date yet';
+    next.textContent = bundle.nextEpisode ? `Next scheduled: ${formatNextEpisode(bundle.nextEpisode)}` : 'No known scheduled episode date right now.';
 
     card.querySelector('.lineup-card__open').addEventListener('click', () => {
       state.selectedId = entry.id;
@@ -1232,6 +1238,64 @@ async function renderUpcoming() {
   });
 }
 
+
+function loadConfigDefaults() {
+  const cfg = (window.TV_TRACKER_CONFIG && typeof window.TV_TRACKER_CONFIG === 'object') ? window.TV_TRACKER_CONFIG : {};
+  if (!cfg || Array.isArray(cfg)) return;
+  state.settings = {
+    ...state.settings,
+    ...Object.fromEntries(Object.entries(cfg).filter(([, value]) => value != null && value !== '')),
+  };
+}
+
+function buildConfigObject() {
+  return {
+    tmdbApiKey: String(state.settings.tmdbApiKey || ''),
+    watchRegion: String(state.settings.watchRegion || 'US'),
+    castCount: Number(state.settings.castCount || 4),
+    supabaseUrl: String(state.settings.supabaseUrl || ''),
+    supabaseKey: String(state.settings.supabaseKey || ''),
+    workspaceSlug: String(state.settings.workspaceSlug || ''),
+  };
+}
+
+function buildConfigJsText() {
+  return `window.TV_TRACKER_CONFIG = ${JSON.stringify(buildConfigObject(), null, 2)};
+`;
+}
+
+function exportConfigFile() {
+  const blob = new Blob([buildConfigJsText()], { type: 'application/javascript' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'config.js';
+  link.click();
+  URL.revokeObjectURL(url);
+  toast('config.js saved. Drop it into the app folder and you can stop typing those keys on your phone.');
+}
+
+async function copyConfigToClipboard() {
+  const text = buildConfigJsText();
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Config copied to the clipboard.');
+  } catch (err) {
+    console.error(err);
+    toast('Clipboard copy failed. Use Save config instead.');
+  }
+}
+
+function openThreeWeekSchedule() {
+  state.upcomingFilter = '21';
+  document.querySelectorAll('[data-upcoming-filter]').forEach((chip) => chip.classList.toggle('active', chip.dataset.upcomingFilter === '21'));
+  persistState();
+  renderUpcoming();
+  activateMobilePane('upcoming');
+  const target = els.upcomingList?.closest('.weekly-panel') || els.upcomingList;
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function exportState() {
   const blob = new Blob([JSON.stringify({ settings: state.settings, users: state.users, shows: state.shows }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1338,21 +1402,25 @@ function renderSyncStatus() {
 
   if (!hasSupabaseConfig()) {
     els.syncStatusPill.textContent = 'Local only';
+    if (els.syncErrorDetail) { els.syncErrorDetail.textContent = ''; els.syncErrorDetail.classList.add('hidden'); }
     return;
   }
   if (state.sync.mode === 'syncing') {
     els.syncStatusPill.className = 'pill syncing';
     els.syncStatusPill.textContent = 'Syncing…';
+    if (els.syncErrorDetail) { els.syncErrorDetail.textContent = ''; els.syncErrorDetail.classList.add('hidden'); }
     return;
   }
   if (state.sync.mode === 'error') {
     els.syncStatusPill.className = 'pill error';
     els.syncStatusPill.textContent = 'Sync error';
+    if (els.syncErrorDetail) { els.syncErrorDetail.textContent = friendlySyncError({ message: state.sync.error || '' }); els.syncErrorDetail.classList.remove('hidden'); }
     return;
   }
 
   els.syncStatusPill.className = 'pill success';
   els.syncStatusPill.textContent = state.sync.lastSyncAt ? `Cloud sync · ${formatTimeOnly(state.sync.lastSyncAt)}` : 'Cloud sync ready';
+  if (els.syncErrorDetail) { els.syncErrorDetail.textContent = ''; els.syncErrorDetail.classList.add('hidden'); }
 }
 
 function markSyncSuccess() {
@@ -1371,6 +1439,8 @@ function friendlySyncError(err) {
   const message = err?.message || String(err);
   if (/relation .* does not exist/i.test(message)) return 'Run the SQL in supabase-setup.sql first.';
   if (/JWT|apikey|Invalid API key/i.test(message)) return 'Check the project URL and Supabase browser key.';
+  if (/Failed to fetch|NetworkError|Load failed/i.test(message)) return 'Network request failed. On phones this usually means the URL/key is wrong, the site is blocked from reaching Supabase, or the browser cached old settings.';
+  if (/abort|aborted|timeout/i.test(message)) return 'The sync request timed out. Try again on a stronger connection.';
   return message;
 }
 
@@ -1542,6 +1612,18 @@ function safeJsonParse(text) {
   } catch (_) {
     return text;
   }
+}
+
+function normalizeSupabaseUrl(value) {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^(db\.)/i.test(trimmed)) return '';
+  return `https://${trimmed}`;
+}
+
+function normalizeApiKey(value) {
+  return String(value || '').trim().replace(/\s+/g, '');
 }
 
 function normalizeWorkspaceSlug(value) {

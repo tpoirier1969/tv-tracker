@@ -21,10 +21,10 @@
       <div>
         <div class="title-row">
           <p class="eyebrow">Shared tracker</p>
-          <span id="versionFlag" class="version-flag">v4.2.1</span>
+          <span id="versionFlag" class="version-flag">v4.3.0</span>
         </div>
         <h1>TV Lineup Tracker</h1>
-        <p class="subhead">Track shows, assign them to any users you set up, and sync the lineup across devices with Supabase. This build tightens the lineup into a denser list so you can actually see more than one blessed program at a time.</p>
+        <p class="subhead">Track shows, assign them to any users you set up, and sync the lineup across devices with Supabase. This build goes leaner: no lineup thumbnails, tighter rows, a 3-week planning view, and config-file export so you can stop typing long Supabase keys on your phone.</p>
       </div>
       <div class="topbar-actions">
         <span id="syncStatusPill" class="pill neutral">Local only</span>
@@ -32,6 +32,8 @@
         <button id="syncNowBtn" class="ghost-btn">Sync now</button>
         <button id="settingsBtn" class="ghost-btn">Settings</button>
         <button id="exportBtn" class="ghost-btn">Export</button>
+        <button id="exportConfigBtn" class="ghost-btn">Save config</button>
+        <button id="copyConfigBtn" class="ghost-btn">Copy config</button>
         <label class="ghost-btn file-label" for="importFile">Import</label>
         <input id="importFile" type="file" accept="application/json" hidden />
       </div>
@@ -39,8 +41,7 @@
 
     <section class="stats-strip" aria-label="Quick stats">
       <article class="stat-chip"><span class="label">Visible shows</span><strong id="trackedShowsStat">0</strong></article>
-      <article class="stat-chip"><span class="label">Scheduled this week</span><strong id="weeklyDropsStat">0</strong></article>
-      <article class="stat-chip"><span class="label">Scheduled today</span><strong id="todayDropsStat">0</strong></article>
+      <button type="button" id="threeWeekStatBtn" class="stat-chip stat-chip--button"><span class="label">Scheduled next 3 weeks</span><strong id="weeklyDropsStat">0</strong></button>
       <article class="stat-chip"><span class="label">Viewing as</span><strong id="activeUserStat">All users</strong></article>
     </section>
 
@@ -72,7 +73,7 @@
           <span id="upcomingCount" class="pill neutral">0 tracked</span>
         </div>
         <div class="upcoming-toolbar">
-          <button class="chip active" data-upcoming-filter="7">This week</button>
+          <button class="chip active" data-upcoming-filter="21">Next 3 weeks</button>
           <button class="chip" data-upcoming-filter="30">Next 30 days</button>
           <button class="chip" data-upcoming-filter="all">All scheduled</button>
         </div>
@@ -134,7 +135,7 @@
         </label>
         <label>
           Watch region
-          <input id="watchRegionInput" type="text" maxlength="2" placeholder="US" />
+          <input id="watchRegionInput" type="text" maxlength="2" placeholder="US" autocapitalize="characters" autocorrect="off" spellcheck="false" />
         </label>
         <label>
           Top-billed actors to show
@@ -143,20 +144,23 @@
         <hr class="settings-rule" />
         <label>
           Supabase project URL
-          <input id="supabaseUrlInput" type="url" placeholder="https://YOURPROJECT.supabase.co" autocomplete="off" />
+          <input id="supabaseUrlInput" type="url" placeholder="https://YOURPROJECT.supabase.co" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         </label>
         <label>
           Supabase publishable / anon key
-          <input id="supabaseKeyInput" type="password" placeholder="Paste your Supabase browser key" autocomplete="off" />
+          <input id="supabaseKeyInput" type="password" placeholder="Paste your Supabase browser key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         </label>
         <label>
           Shared workspace slug
-          <input id="workspaceSlugInput" type="text" placeholder="cabin-tv-household" autocomplete="off" spellcheck="false" />
+          <input id="workspaceSlugInput" type="text" placeholder="cabin-tv-household" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         </label>
         <div class="settings-actions">
           <button type="submit" class="primary-btn">Save settings</button>
+          <button type="button" id="settingsExportConfigBtn" class="ghost-btn small">Save config.js</button>
+          <button type="button" id="settingsCopyConfigBtn" class="ghost-btn small">Copy config</button>
         </div>
       </form>
+      <div id="syncErrorDetail" class="sync-error-detail hidden"></div>
       <div class="settings-note">
         <p><strong>TMDb key:</strong> keep using the key you already had.</p>
         <p><strong>Supabase:</strong> paste the project URL plus a browser-safe publishable or legacy anon key, then use the same workspace slug on every device that should share this tracker.</p>
@@ -207,22 +211,25 @@
 
   <template id="lineupCardTemplate">
     <article class="lineup-card">
-      <div class="lineup-card__image-wrap">
-        <img class="lineup-card__image" alt="" />
-      </div>
       <div class="lineup-card__body">
         <div class="lineup-card__title-row">
-          <h3 class="lineup-card__title"></h3>
-          <button class="icon-btn danger lineup-card__delete" title="Remove show">✕</button>
+          <div class="lineup-card__title-group">
+            <h3 class="lineup-card__title"></h3>
+            <div class="lineup-card__inline-actions">
+              <button class="ghost-btn small lineup-card__open">Open</button>
+              <button class="ghost-btn small lineup-card__assign">Assign</button>
+            </div>
+          </div>
+          <div class="lineup-card__utility-actions">
+            <button class="ghost-btn small lineup-card__refresh">Refresh</button>
+            <button class="icon-btn danger lineup-card__delete" title="Remove show">✕</button>
+          </div>
         </div>
-        <p class="lineup-card__meta"></p>
-        <div class="lineup-card__badges"></div>
+        <div class="lineup-card__info-row">
+          <p class="lineup-card__meta"></p>
+          <div class="lineup-card__badges"></div>
+        </div>
         <p class="lineup-card__next"></p>
-        <div class="lineup-card__actions">
-          <button class="ghost-btn small lineup-card__open">Open</button>
-          <button class="ghost-btn small lineup-card__assign">Assign</button>
-          <button class="ghost-btn small lineup-card__refresh">Refresh</button>
-        </div>
       </div>
     </article>
   </template>
@@ -242,7 +249,8 @@
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
+  <script src="config.js"></script>
   <script src="app.js" defer></script>
-  <footer class="app-footer"><span id="footerVersion">v4.2.1</span> · shared lineup dashboard</footer>
+  <footer class="app-footer"><span id="footerVersion">v4.3.0</span> · shared lineup dashboard</footer>
 </body>
 </html>

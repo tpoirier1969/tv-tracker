@@ -1,0 +1,1 @@
+window.TV_TRACKER_CONFIG = window.TV_TRACKER_CONFIG || {};

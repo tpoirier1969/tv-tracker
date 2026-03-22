@@ -1,4 +1,4 @@
-# TV Lineup Tracker v4.2.1
+# TV Lineup Tracker v4.3.0
 
 This build adds two big upgrades:
 
@@ -40,7 +40,7 @@ The app still uses TMDb for show search/details when you provide your TMDb API k
 The app’s upcoming list shows the **best-known scheduled next episode date** coming back from the data source. That can differ from when a service in the U.S. actually makes an episode available.
 
 
-## v4.2.1 notes
+## v4.3.0 notes
 - Compressed the lineup into a denser list so more shows fit on one screen.
 - Compressed the top stat area into smaller single-line chips.
 - Changed the default mobile pane to **Lineup** so the phone version lands on the actual shows first.

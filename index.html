@@ -10,19 +10,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.v4.7.1.css" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar panel">
       <div class="topbar-main">
-        <nav class="mobile-tabbar" aria-label="Sections">
-          <button class="chip active" data-mobile-pane-button="lineup">Lineup</button>
-          <button class="chip" data-mobile-pane-button="detail">Details</button>
-        </nav>
-        <div class="title-row">
+                <div class="title-row">
           <p class="eyebrow">Shared tracker</p>
-          <span id="versionFlag" class="version-flag">v4.7.0</span>
+          <span id="versionFlag" class="version-flag">v4.7.1</span>
         </div>
         <h1>TV Lineup Tracker</h1>
         <p class="subhead">Cleaner lineup workflow, safer Supabase sync, and windows that don’t trap you.</p>
@@ -32,6 +28,7 @@
         <button id="headerAddShowBtn" class="primary-btn">Add show</button>
         <button id="manageUsersBtn" class="ghost-btn">Users</button>
         <button id="syncNowBtn" class="ghost-btn">Sync now</button>
+        <button id="refreshAllBtn" class="ghost-btn">Refresh all</button>
         <button id="settingsBtn" class="ghost-btn">Settings</button>
         <button id="exportBtn" class="ghost-btn">Export</button>
                 <label class="ghost-btn file-label" for="importFile">Import</label>
@@ -54,18 +51,18 @@
         <div class="panel-heading lineup-heading">
           <div>
             <h2 id="lineupTitleText">Lineup</h2>
+            <p id="lineupCountText" class="lineup-count-text">0 visible</p>
             <p id="lineupScopeLabel" class="panel-kicker">All users · All shows</p>
           </div>
-          <div class="lineup-actions">
-            <span id="lineupCountPill" class="pill neutral">0 visible</span>
-            <button id="refreshAllBtn" class="ghost-btn small">Refresh all</button>
-            <button id="lineupAddBtn" class="primary-btn small">Add show</button>
-          </div>
         </div>
-        <div id="lineupFilterChips" class="lineup-filter-row">
-          <button class="chip active" data-lineup-filter="all">Active shows</button>
-          <button class="chip" data-lineup-filter="21">Scheduled next 3 weeks</button>
-          <button class="chip" data-lineup-filter="archived">Archived</button>
+        <div class="lineup-filter-stack">
+          <div id="lineupFilterChips" class="lineup-filter-row lineup-filter-row--primary">
+            <button class="chip active" data-lineup-filter="all">Active shows</button>
+            <button class="chip" data-lineup-filter="archived">Archived</button>
+          </div>
+          <div class="lineup-filter-row lineup-filter-row--secondary">
+            <button class="chip" data-lineup-filter="21">3 week release window</button>
+          </div>
         </div>
         <div id="lineupGrid" class="lineup-grid empty-state-box">
           <p>No shows saved yet. Add one and this stops acting like a spreadsheet.</p>
@@ -206,26 +203,26 @@
   <template id="lineupCardTemplate">
     <article class="lineup-card lineup-card--collapsed">
       <div class="lineup-card__body">
-        <div class="lineup-card__title-row">
+        <div class="lineup-card__title-row" role="button" tabindex="0" aria-expanded="false" title="Expand or collapse listing">
           <div class="lineup-card__headline">
             <h3 class="lineup-card__title"></h3>
             <span class="lineup-card__status-chip"></span>
           </div>
           <div class="lineup-card__title-actions">
-            <button class="ghost-btn small lineup-card__toggle" type="button" title="Expand or collapse listing">+</button>
+            <span class="ghost-btn small lineup-card__toggle" aria-hidden="true">+</span>
             <button class="icon-btn danger lineup-card__delete" type="button" title="Remove show">✕</button>
           </div>
         </div>
         <div class="lineup-card__details">
           <div class="lineup-card__row lineup-card__row--meta">
             <div class="lineup-card__meta"></div>
-            <div class="lineup-card__action-row">
-              <button class="ghost-btn small lineup-card__open" type="button">Details</button>
-              <button class="ghost-btn small lineup-card__archive" type="button">Archive</button>
-            </div>
           </div>
           <div class="lineup-card__row lineup-card__row--assign">
             <p class="lineup-card__assigned"></p>
+          </div>
+          <div class="lineup-card__action-bar">
+            <button class="ghost-btn small lineup-card__open" type="button">Details</button>
+            <button class="ghost-btn small lineup-card__archive" type="button">Archive</button>
             <button class="ghost-btn small lineup-card__assign" type="button">Assign user</button>
           </div>
           <p class="lineup-card__next"></p>
@@ -253,7 +250,7 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="config.js"></script>
-  <script src="app.v4.7.0.js" defer></script>
-  <footer class="app-footer"><span id="footerVersion">v4.7.0</span> · shared lineup dashboard</footer>
+  <script src="app.v4.7.1.js" defer></script>
+  <footer class="app-footer"><span id="footerVersion">v4.7.1</span> · shared lineup dashboard</footer>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const APP_VERSION = 'v4.7.1';
+const APP_VERSION = 'v4.7.2';
 const BUILD_DATE = '2026-03-22';
 let lineupHydrationToken = 0;
 const STORAGE_KEY = 'tv-lineup-tracker-state-v4-2';

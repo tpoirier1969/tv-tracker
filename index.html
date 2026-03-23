@@ -22,7 +22,7 @@
         </nav>
         <div class="title-row">
           <p class="eyebrow">Shared tracker</p>
-          <span id="versionFlag" class="version-flag">v4.6.2</span>
+          <span id="versionFlag" class="version-flag">v4.7.0</span>
         </div>
         <h1>TV Lineup Tracker</h1>
         <p class="subhead">Cleaner lineup workflow, safer Supabase sync, and windows that don’t trap you.</p>
@@ -63,8 +63,9 @@
           </div>
         </div>
         <div id="lineupFilterChips" class="lineup-filter-row">
-          <button class="chip active" data-lineup-filter="all">All shows</button>
+          <button class="chip active" data-lineup-filter="all">Active shows</button>
           <button class="chip" data-lineup-filter="21">Scheduled next 3 weeks</button>
+          <button class="chip" data-lineup-filter="archived">Archived</button>
         </div>
         <div id="lineupGrid" class="lineup-grid empty-state-box">
           <p>No shows saved yet. Add one and this stops acting like a spreadsheet.</p>
@@ -74,7 +75,7 @@
       <section class="panel detail-panel" data-mobile-pane="detail">
         <div id="detailEmpty" class="empty-state-box sticky-empty">
           <h2>Show details</h2>
-          <p>Pick something from the lineup and the details land here.</p>
+          <p>Details now open inside each lineup card so you do not have to scroll clear to the bottom.</p>
         </div>
         <div id="detailView" class="detail-view hidden"></div>
       </section>
@@ -218,13 +219,17 @@
         <div class="lineup-card__details">
           <div class="lineup-card__row lineup-card__row--meta">
             <div class="lineup-card__meta"></div>
-            <button class="ghost-btn small lineup-card__open" type="button">Details</button>
+            <div class="lineup-card__action-row">
+              <button class="ghost-btn small lineup-card__open" type="button">Details</button>
+              <button class="ghost-btn small lineup-card__archive" type="button">Archive</button>
+            </div>
           </div>
           <div class="lineup-card__row lineup-card__row--assign">
             <p class="lineup-card__assigned"></p>
             <button class="ghost-btn small lineup-card__assign" type="button">Assign user</button>
           </div>
           <p class="lineup-card__next"></p>
+          <div class="lineup-card__full-detail"></div>
         </div>
       </div>
     </article>
@@ -248,7 +253,7 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="config.js"></script>
-  <script src="app.v4.6.2.js" defer></script>
-  <footer class="app-footer"><span id="footerVersion">v4.6.2</span> · shared lineup dashboard</footer>
+  <script src="app.v4.7.0.js" defer></script>
+  <footer class="app-footer"><span id="footerVersion">v4.7.0</span> · shared lineup dashboard</footer>
 </body>
 </html>

@@ -795,6 +795,7 @@ function inferProviderFamily(name = '') {
     .replace(/on demand/ig, '')
     .replace(/premium/ig, '')
     .replace(/essential/ig, '')
+    .replace(/subscription/ig, '')
     .replace(/\s*\([^)]*\)/g, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+,/g, ',')
@@ -802,14 +803,31 @@ function inferProviderFamily(name = '') {
   text = text.replace(/Paramount Plus/ig, 'Paramount+');
   text = text.replace(/Amazon Prime Video/ig, 'Prime Video');
   text = text.replace(/AMC Plus/ig, 'AMC+');
+  text = text.replace(/Disney Plus/ig, 'Disney+');
+  text = text.replace(/HBO Max/ig, 'Max');
+  text = text.replace(/Netflix Standard with Ads/ig, 'Netflix');
   return text.replace(/(^[,+\s]+|[,+\s]+$)/g, '');
 }
 
-function compactProviderList(raw = '') {
-  const parts = String(raw || '').split(',').map((item) => inferProviderFamily(item)).filter(Boolean);
-  const unique = [...new Set(parts.map((item) => item.trim()))];
-  if (unique.length <= 2) return unique.join(', ');
-  return `${unique.slice(0, 2).join(', ')} +${unique.length - 2} more`;
+function compactProviderList(raw = '', options = {}) {
+  const { maxVisible = 2, exclude = [] } = options;
+  const excludeSet = new Set((Array.isArray(exclude) ? exclude : [exclude]).map((item) => normalizeTitle(inferProviderFamily(item))).filter(Boolean));
+  const parts = String(raw || '')
+    .split(',')
+    .map((item) => inferProviderFamily(item))
+    .filter(Boolean)
+    .filter((item) => !excludeSet.has(normalizeTitle(item)));
+  const unique = [];
+  const seen = new Set();
+  for (const item of parts) {
+    const key = normalizeTitle(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item.trim());
+  }
+  if (!unique.length) return '';
+  if (unique.length <= maxVisible) return unique.join(', ');
+  return `${unique.slice(0, maxVisible).join(', ')} +${unique.length - maxVisible} more`;
 }
 
 function normalizeStatusOverride(value = '') {
@@ -1309,21 +1327,29 @@ function inferLineupStatus(entry, bundle) {
   }
 
   const rawStatus = String(bundle?.show?.status || '').toLowerCase();
+  const summaryText = stripHtml(bundle?.show?.summary || '').toLowerCase();
+  const statusNote = String(getShowMeta(entry).statusNote || '').trim();
+  const statusNoteLower = statusNote.toLowerCase();
+  const combinedHints = `${rawStatus} ${summaryText} ${statusNoteLower}`;
   const lastAirDate = bundle?.show?.lastAirDate || bundle?.show?.ended || entry.lastAirDate || entry.ended || '';
   const inProduction = Boolean(bundle?.show?.inProduction);
-  const statusNote = getShowMeta(entry).statusNote;
+  const hasRevivalHint = /(revival|reboot|continuation|returning project|animated continuation|in development|development|renewed|announced)/i.test(combinedHints);
+  const isReturningSignal = rawStatus.includes('returning') || rawStatus.includes('planned') || rawStatus.includes('production') || inProduction || hasRevivalHint;
   const attachNote = (base) => statusNote ? `${base} ${statusNote}`.trim() : base;
 
   if (scheduleDisposition === 'overseas') {
-    if (rawStatus.includes('returning') || rawStatus.includes('planned') || rawStatus.includes('production') || inProduction) {
+    if (isReturningSignal) {
       return { variant: 'returning', text: attachNote('Returning, but no US release date is confirmed yet.') };
     }
     return { variant: 'returning', text: attachNote('Aired overseas; US release date not confirmed.') };
   }
 
+  if ((rawStatus.includes('ended') || rawStatus.includes('cancel')) && hasRevivalHint) {
+    return { variant: 'returning', text: attachNote('Revival or continuation is in development; no US release date is confirmed yet.') };
+  }
   if (rawStatus.includes('ended')) return { variant: 'ended', text: attachNote('Series ended.') };
   if (rawStatus.includes('cancel')) return { variant: 'ended', text: attachNote('Series canceled.') };
-  if (rawStatus.includes('returning') || rawStatus.includes('planned') || rawStatus.includes('production') || inProduction) {
+  if (isReturningSignal) {
     return { variant: 'returning', text: attachNote('New season expected, but no US release date is announced yet.') };
   }
 
@@ -1344,6 +1370,7 @@ function summarizeLineupStatus(status = {}) {
   const text = String(status.text || '').trim();
   if (!text) return 'Status unknown';
   if (text.startsWith('Next scheduled:')) return text.replace('Next scheduled:', 'Scheduled').trim();
+  if (text.includes('Revival or continuation is in development')) return 'In development';
   if (text.includes('Likely ended')) return 'Likely ended';
   if (text.includes('Series ended')) return 'Ended';
   if (text.includes('Series canceled')) return 'Canceled';
@@ -1383,8 +1410,9 @@ function buildLineupMeta(entry, bundle) {
   const seasonCount = (bundle?.seasons?.length ?? Number(entry.seasonCount || 0) ?? 0);
   const seasonText = `${seasonCount || '—'} season${seasonCount === 1 ? '' : 's'}`;
   const main = inferProviderFamily(bundle?.mainChannel || entry.network || '');
-  const services = compactProviderList(bundle?.streaming || entry.streaming || '');
-  return uniqueBits(seasonText, main, services).join(' · ');
+  const services = compactProviderList(bundle?.streaming || entry.streaming || '', { maxVisible: 1, exclude: [main] });
+  const providerText = services ? `${main || services}${main && services ? ` + ${services}` : ''}` : main;
+  return uniqueBits(seasonText, providerText).join(' · ');
 }
 
 function buildInlineDetailHtml(entry, bundle) {
@@ -1416,7 +1444,7 @@ function buildInlineDetailHtml(entry, bundle) {
           </div>
         </div>
       </div>
-      <div class="lineup-card__full-next"><strong>Next in the US:</strong> ${escapeHtml(nextText)}</div>
+      <div class="lineup-card__full-next"><strong>US release status:</strong> ${escapeHtml(nextText)}</div><p class="lineup-card__full-note">Original release dates can be overseas. The lineup only treats US-verified dates as scheduled.</p>
       <div class="lineup-card__status-tools">
         <label>
           <span>Status override</span>
@@ -1539,9 +1567,9 @@ function renderLineup() {
         const detailExpanded = Boolean(state.lineupDetailExpanded?.[entry.id]);
 
         titleEl.textContent = bundle?.show?.name || entry.name || 'Untitled show';
-        metaEl.innerHTML = `<strong>Info:</strong> ${escapeHtml(buildLineupMeta(entry, bundle) || 'Details still loading')}`;
-        assignedEl.innerHTML = `<strong>Users:</strong> ${escapeHtml(assignedUsers.length ? assignedUsers.map((user) => user.name).join(', ') : (state.users.length ? 'Unassigned' : 'Shared lineup'))}`;
-        nextEl.innerHTML = `<strong>Status:</strong> ${escapeHtml(status.text)}`;
+        metaEl.textContent = buildLineupMeta(entry, bundle) || 'Details still loading';
+        assignedEl.textContent = assignedUsers.length ? assignedUsers.map((user) => user.name).join(', ') : (state.users.length ? 'Unassigned' : 'Shared lineup');
+        nextEl.textContent = status.text;
         statusChipEl.textContent = summarizeLineupStatus(status);
         toggleBtn.textContent = buildLineupToggleLabel(expanded);
         titleRowBtn.setAttribute('aria-expanded', String(expanded));

@@ -270,10 +270,3 @@ img{display:block;max-width:100%}
     width: 100%;
   }
 }
-
-
-.lineup-card__meta,.lineup-card__assigned,.lineup-card__next{font-size:14px;line-height:1.45}
-.lineup-card__meta{color:#dbe6ff;font-weight:700}
-.lineup-card__assigned{color:#bed0ee}
-.lineup-card__next{color:#eef3ff;font-weight:700}
-.lineup-card__full-note{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
